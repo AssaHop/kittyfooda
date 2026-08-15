@@ -2,15 +2,20 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Ханафуда</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
 body{
   min-height:100vh;
+  min-height:100dvh;
+  min-height:var(--tg-viewport-stable-height,100vh);
   background:radial-gradient(ellipse at 50% 0,#1a0e06,#060402 70%);
   display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:12px;padding:12px;
+  justify-content:center;gap:12px;
+  padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom));
   font-family:Georgia,serif;color:#e8d5b0;
 }
 h1{font-size:clamp(16px,4vw,24px);letter-spacing:6px;
@@ -27,6 +32,22 @@ footer{color:#5a4a28;font-size:11px;text-align:center;max-width:900px;line-heigh
 <canvas id="c"></canvas>
 <footer>★ 20 · ♦ 10 · ▬ 5 · · 1  |  Совпал месяц = захват  |  Стоп или Кои-Кои (×2)</footer>
 <script>
+// ── Telegram Mini App: разворачиваем на весь экран, убираем "съезжание" ──
+if(window.Telegram && window.Telegram.WebApp){
+  const tg=window.Telegram.WebApp;
+  tg.ready();
+  tg.expand();
+  if(tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+  if(tg.setHeaderColor) try{tg.setHeaderColor('#060402');}catch(e){}
+  if(tg.setBackgroundColor) try{tg.setBackgroundColor('#060402');}catch(e){}
+  const applyVh=()=>{
+    document.documentElement.style.setProperty('--tg-viewport-stable-height',
+      (tg.viewportStableHeight||window.innerHeight)+'px');
+  };
+  applyVh();
+  tg.onEvent('viewportChanged',applyVh);
+}
+
 const cv=document.getElementById('c');
 const ct=cv.getContext('2d');
 const W=450,H=800;
