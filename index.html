@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ханафуда</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  min-height:100vh;
+  background:radial-gradient(ellipse at 50% 0,#1a0e06,#060402 70%);
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:12px;padding:12px;
+  font-family:Georgia,serif;color:#e8d5b0;
+}
+h1{font-size:clamp(16px,4vw,24px);letter-spacing:6px;
+   color:#c9a227;text-shadow:0 0 20px rgba(201,162,39,.5);}
+canvas{display:block;cursor:pointer;
+       border:3px solid #7a5010;border-radius:8px;
+       box-shadow:0 0 50px rgba(0,0,0,.8);
+       max-width:96vw;height:auto;}
+footer{color:#5a4a28;font-size:11px;text-align:center;max-width:900px;line-height:1.7;}
+</style>
+</head>
+<body>
+<h1>ハ  ХАНАФУДА  КОИ-КОИ  ハ</h1>
+<canvas id="c"></canvas>
+<footer>★ 20 · ♦ 10 · ▬ 5 · · 1  |  Совпал месяц = захват  |  Стоп или Кои-Кои (×2)</footer>
+<script>
+const cv=document.getElementById('c');
+const ct=cv.getContext('2d');
+const W=450,H=800;
+cv.width=W;cv.height=H;
+
+// ── Размеры карт ─────────────────────────────────────────────────
+const CW=44,CH=66,CG=7;
+const HX=(W-(8*(CW+CG)-CG)>>1)|0;  // start x player/AI hand (~25)
+const TX=(W-(5*(CW+CG)-CG)>>1)|0;  // start x table, 5 cols (~101)
+
+// ── Y-координаты зон ─────────────────────────────────────────────
+const YAI  = 72;   // AI cards top
+const YTAB = 155;  // Table row 1 top
+const YCAP = 388;  // Captured summary line
+const YPROG= 412;  // Yaku progress panel
+const YPH  = 576;  // Player hand top
+const YMSG = 660;  // Message bar
+const YBTN = 718;  // Choice buttons
+
+// ── Месяцы ───────────────────────────────────────────────────────
+const MON=[
+  {n:'Сосна',   c:'#1a5a10'}, // 1  тёмно-зелёный
+  {n:'Слива',   c:'#c03878'}, // 2  ярко-розовый/малиновый
+  {n:'Сакура',  c:'#e06890'}, // 3  светло-розовый (светлее м.2)
+  {n:'Глицин.', c:'#3828c8'}, // 4  ярко-синий-фиолетовый
+  {n:'Ирис',    c:'#1068b8'}, // 5  королевский синий
+  {n:'Пион',    c:'#d06008'}, // 6  оранжевый
+  {n:'Хаги',    c:'#901828'}, // 7  тёмно-бордовый (отличается от м.2 и м.10)
+  {n:'Трава',   c:'#708010'}, // 8  оливковый/жёлто-зелёный
+  {n:'Хриз.',   c:'#a89010'}, // 9  золотисто-жёлтый (светлее м.8)
+  {n:'Клён',    c:'#c83010'}, // 10 красный-алый (отличается от м.7 и м.6)
+  {n:'Ива',     c:'#207878'}, // 11 сине-зелёный/бирюзовый
+  {n:'Павл.',   c:'#880898'}, // 12 фиолетовый (отличается от м.4)
+];
+
+// ── Колода 48 карт ───────────────────────────────────────────────
+function buildDeck(){
+  const d=[
+    {m:1,t:'bright',sub:'crane'},{m:1,t:'ribbon',sub:'poetry'},{m:1,t:'plain'},{m:1,t:'plain'},
+    {m:2,t:'animal'},{m:2,t:'ribbon',sub:'poetry'},{m:2,t:'plain'},{m:2,t:'plain'},
+    {m:3,t:'bright',sub:'curtain'},{m:3,t:'ribbon',sub:'poetry'},{m:3,t:'plain'},{m:3,t:'plain'},
+    {m:4,t:'animal'},{m:4,t:'ribbon'},{m:4,t:'plain'},{m:4,t:'plain'},
+    {m:5,t:'animal'},{m:5,t:'ribbon'},{m:5,t:'plain'},{m:5,t:'plain'},
+    {m:6,t:'animal',sub:'butterfly'},{m:6,t:'ribbon',sub:'blue'},{m:6,t:'plain'},{m:6,t:'plain'},
+    {m:7,t:'animal',sub:'boar'},{m:7,t:'ribbon'},{m:7,t:'plain'},{m:7,t:'plain'},
+    {m:8,t:'bright',sub:'moon'},{m:8,t:'animal'},{m:8,t:'plain'},{m:8,t:'plain'},
+    {m:9,t:'animal',sub:'sake'},{m:9,t:'ribbon',sub:'blue'},{m:9,t:'plain'},{m:9,t:'plain'},
+    {m:10,t:'animal',sub:'deer'},{m:10,t:'ribbon',sub:'blue'},{m:10,t:'plain'},{m:10,t:'plain'},
+    {m:11,t:'bright',sub:'rain'},{m:11,t:'animal'},{m:11,t:'ribbon'},{m:11,t:'plain'},
+    {m:12,t:'bright'},{m:12,t:'plain'},{m:12,t:'plain'},{m:12,t:'plain'},
+  ];
+  d.forEach((c,i)=>c.id=i);
+  return d;
+}
+let DIFF=3; // 1-7 уровней сложности
+
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=0|Math.random()*(i+1);[a[i],a[j]]=[a[j],a[i]];}}
+
+// ── Яку ──────────────────────────────────────────────────────────
+function getYaku(cap){
+  const B=cap.filter(c=>c.t==='bright');
+  const A=cap.filter(c=>c.t==='animal');
+  const R=cap.filter(c=>c.t==='ribbon');
+  const P=cap.filter(c=>c.t==='plain');
+  const y=[];
+  const hasRain=B.some(c=>c.sub==='rain');
+  if(B.length>=5)                    y.push({n:'Гоко',      p:10});
+  else if(B.length===4&&!hasRain)    y.push({n:'Сико',       p:8});
+  else if(B.length===4&&hasRain)     y.push({n:'Амэ-Сико',  p:7});
+  else if(B.length===3&&!hasRain)    y.push({n:'Санко',      p:5});
+  if(A.some(c=>c.sub==='boar')&&A.some(c=>c.sub==='deer')&&A.some(c=>c.sub==='butterfly'))
+    y.push({n:'Ино-Сика-Тё',p:5});
+  const hasCur=B.some(c=>c.sub==='curtain'),hasMoon=B.some(c=>c.sub==='moon');
+  const hasSake=A.some(c=>c.sub==='sake');
+  if(hasCur&&hasSake)  y.push({n:'Ханами',  p:3});
+  if(hasMoon&&hasSake) y.push({n:'Цукими',  p:3});
+  const poetry=R.filter(c=>c.sub==='poetry').length;
+  const blue  =R.filter(c=>c.sub==='blue').length;
+  if(poetry>=3) y.push({n:'Ака-тан', p:5});
+  if(blue>=3)   y.push({n:'Ао-тан',  p:5});
+  if(R.length>=5) y.push({n:`Тан×${R.length}`,  p:R.length-4});
+  if(A.length>=5) y.push({n:`Тане×${A.length}`, p:A.length-4});
+  if(P.length>=10)y.push({n:`Касу×${P.length}`, p:P.length-9});
+  return y;
+}
+function yakuPts(y){return y.reduce((s,x)=>s+x.p,0);}
+
+// ── Состояние ────────────────────────────────────────────────────
+let G={phase:'start'};
+
+function newGame(){
+  G={phase:'start',round:1,rounds:6,scores:[0,0]};
+  newRound();
+}
+function validDeal(deck){
+  const t=deck.slice(16,24);
+  const p=deck.slice(0,8);
+  // Пересдача только если у игрока нет ни одного совпадения со столом
+  const tMonths=new Set(t.map(c=>c.m));
+  if(!p.some(c=>tMonths.has(c.m))) return false;
+  return true;
+}
+function newRound(){
+  let deck;
+  do{ deck=buildDeck(); shuffle(deck); }while(!validDeal(deck));
+  G={...G,phase:'select',turn:'player',sel:null,aiCard:null,
+    deck:deck.slice(24),pHand:deck.slice(0,8),
+    aHand:deck.slice(8,16),table:deck.slice(16,24),
+    pCap:[],aCap:[],prevPts:0,aPrevPts:0,
+    koiKoi:false,aKoiKoi:false,currentYaku:[],
+    aiHL:-1,aiTargets:[],aiPreview:null,aiCard:null,
+    msg:'Выберите карту из руки, затем нажмите снова для хода'};
+  draw();
+}
+
+// ── Логика хода ──────────────────────────────────────────────────
+function doCapture(card,pile){
+  const m=G.table.filter(c=>c.m===card.m);
+  if(m.length){pile.push(card,...m);G.table=G.table.filter(c=>c.m!==card.m);return m.length+1;}
+  G.table.push(card);return 0;
+}
+function playerPlay(idx){
+  if(G.phase!=='select'||G.turn!=='player')return;
+  const card=G.pHand.splice(idx,1)[0];G.sel=null;
+  const n=doCapture(card,G.pCap);
+  G.msg=n>0?`Захват: ${n} карты месяца ${card.m}`:'Карта на стол';
+  G.phase='wait';draw();setTimeout(playerDraw,650);
+}
+function playerDraw(){
+  if(!G.deck.length){endRound();return;}
+  const card=G.deck[G.deck.length-1]; // смотрим не вытаскивая
+
+  // Показываем карту из колоды лицом вверх
+  G.aiPreview=card;
+  G.aiTargets=G.table.filter(c=>c.m===card.m);
+  G.msg=`Из колоды: месяц ${card.m}${G.aiTargets.length?' — совпадение!':' — на стол'}`;
+  draw();
+
+  setTimeout(()=>{
+    G.aiPreview=null; G.aiTargets=[];
+    G.deck.pop();
+    const n=doCapture(card,G.pCap);
+    G.msg=n>0?`Из колоды: захват ${n+1} карты месяца ${card.m}`:'Из колоды: карта на стол';
+    draw();
+    const yaku=getYaku(G.pCap),pts=yakuPts(yaku);
+    if(pts>G.prevPts){
+      G.prevPts=pts;G.currentYaku=yaku;G.phase='choose';
+      G.msg=`Яку!  ${yaku.map(y=>y.n).join(' + ')}  =  ${pts} очков.   Стоп или Кои-Кои?`;
+      draw();return;
+    }
+    aiTurnStart();
+  },700);
+}
+function playerChoose(stop){
+  if(stop){
+    endRound('player', yakuPts(G.currentYaku)*((G.koiKoi||G.aKoiKoi)?2:1));
+  }else{
+    G.koiKoi=true;G.phase='wait';
+    G.msg='Кои-Кои! Продолжаем...';draw();
+    setTimeout(aiTurnStart,700);
+  }
+}
+function aiTurnStart(){
+  if(!G.aHand.length){endRound();return;}
+  G.turn='ai';G.phase='wait';G.msg='Ход компьютера...';draw();
+  setTimeout(aiPlay,850);
+}
+// ── Оценка карты для яку (маргинальная польза) ──────────────────
+function cardVal(card, captured){
+  const before=yakuPts(getYaku(captured));
+  const after =yakuPts(getYaku([...captured,card]));
+  let pot=0;
+  const istKeys=['boar','deer','butterfly'];
+  if(card.sub&&istKeys.includes(card.sub)){
+    const have=istKeys.filter(s=>captured.some(c=>c.sub===s)).length;
+    pot+=have*12;
+  }
+  if(card.t==='ribbon'&&card.sub==='poetry'){
+    pot+=captured.filter(c=>c.t==='ribbon'&&c.sub==='poetry').length*10;
+  }
+  if(card.t==='ribbon'&&card.sub==='blue'){
+    pot+=captured.filter(c=>c.t==='ribbon'&&c.sub==='blue').length*10;
+  }
+  if(card.t==='bright'&&card.sub!=='rain'){
+    pot+=captured.filter(c=>c.t==='bright'&&c.sub!=='rain').length*8;
+  }
+  if(card.sub==='sake')   pot+=8;
+  if(card.sub==='curtain'||card.sub==='moon') pot+=6;
+  return (after-before)*10+pot+typeVal(card)*0.3;
+}
+
+// Карты которые нужны игроку (для блокировки)
+function playerNeeds(){
+  const cap=G.pCap, need=[];
+  const istKeys=['boar','deer','butterfly'];
+  istKeys.forEach(s=>{ if(!cap.some(c=>c.sub===s)) need.push({sub:s}); });
+  [[1,'poetry'],[2,'poetry'],[3,'poetry']].forEach(([m,s])=>{
+    if(!cap.some(c=>c.m===m&&c.sub===s)) need.push({m,sub:s});
+  });
+  [[6,'blue'],[9,'blue'],[10,'blue']].forEach(([m,s])=>{
+    if(!cap.some(c=>c.m===m&&c.sub===s)) need.push({m,sub:s});
+  });
+  [1,3,8,11,12].forEach(m=>{
+    if(!cap.some(c=>c.m===m&&c.t==='bright')) need.push({m,t:'bright'});
+  });
+  return need;
+}
+
+function playerWants(card, needs){
+  return needs.some(n=>
+    (!n.m||n.m===card.m)&&
+    (!n.sub||n.sub===card.sub)&&
+    (!n.t||n.t===card.t)
+  );
+}
+
+// ── Вспомогательные функции анализа ────────────────────────────
+
+function knownCards(){
+  return [...G.table,...G.pCap,...G.aCap];
+}
+
+function deadMonths(){
+  const known=knownCards();
+  const dead=new Set();
+  for(let m=1;m<=12;m++)
+    if(known.filter(c=>c.m===m).length>=3) dead.add(m);
+  return dead;
+}
+
+function playerThreats(){
+  const cap=G.pCap, threats=[];
+  const istHave=['boar','deer','butterfly'].filter(s=>cap.some(c=>c.sub===s)).length;
+  const brights=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length;
+  const poetry=cap.filter(c=>c.sub==='poetry').length;
+  const blue=cap.filter(c=>c.sub==='blue').length;
+  const hasSake=cap.some(c=>c.sub==='sake');
+  if(istHave>=2)    threats.push({type:'ist',    urgency:istHave*5});
+  if(brights>=2)    threats.push({type:'bright',  urgency:brights*3});
+  if(poetry>=2)     threats.push({type:'akatan',  urgency:poetry*4});
+  if(blue>=2)       threats.push({type:'aotan',   urgency:blue*4});
+  if(hasSake)       threats.push({type:'viewing', urgency:4});
+  return threats.sort((a,b)=>b.urgency-a.urgency);
+}
+
+// Блокировочная ценность карты — насколько опасно отдать её игроку
+function blockingValue(card){
+  const cap=G.pCap;
+  let val=0;
+
+  // ── САКЕ — самая опасная карта, блокирует ДВА яку ──────────
+  // Ханами (Занавес+Саке=3оч) И Цукими (Луна+Саке=3оч)
+  if(card.sub==='sake'){
+    val+=8; // базовая угроза — саке всегда опасно
+    const hasCurtain=cap.some(c=>c.sub==='curtain');
+    const hasMoon=cap.some(c=>c.sub==='moon');
+    if(hasCurtain) val+=15; // Ханами почти готова!
+    if(hasMoon)    val+=15; // Цукими почти готова!
+    if(hasCurtain&&hasMoon) val+=10; // обе угрозы сразу
+  }
+
+  // ── Занавес и Луна — яркие карты просмотра ──────────────────
+  if(card.sub==='curtain'||card.sub==='moon'){
+    const hasSake=cap.some(c=>c.sub==='sake');
+    val+=hasSake?16:5; // если саке уже есть → критично
+    // Ещё и яркая → угроза Санко
+    const br=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length;
+    val+=br*5;
+    if(br>=2) val+=8; // близко к Санко
+  }
+
+  // ── ИСТ: кабан/олень/бабочка ────────────────────────────────
+  if(['boar','deer','butterfly'].includes(card.sub)){
+    const have=['boar','deer','butterfly'].filter(s=>cap.some(c=>c.sub===s)).length;
+    val+=have*10; // 2/3 готово → очень опасно (+20)
+    if(have===2) val+=10; // последняя нужная карта — критично!
+  }
+
+  // ── Поэтические ленты (Ака-тан) ─────────────────────────────
+  if(card.sub==='poetry'){
+    const have=cap.filter(c=>c.sub==='poetry').length;
+    val+=have*9;
+    if(have===2) val+=8; // последняя нужная
+  }
+
+  // ── Синие ленты (Ао-тан) ────────────────────────────────────
+  if(card.sub==='blue'){
+    const have=cap.filter(c=>c.sub==='blue').length;
+    val+=have*9;
+    if(have===2) val+=8;
+  }
+
+  // ── Яркие карты (Санко/Сико/Гоко) ───────────────────────────
+  if(card.t==='bright'&&card.sub!=='rain'){
+    const have=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length;
+    val+=have*5;
+    if(have>=2) val+=6;
+    if(have>=3) val+=12; // близко к Гоко
+  }
+
+  // ── Журавль (м.1 яркая) — легко собрать Санко ───────────────
+  if(card.sub==='crane'){
+    const have=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length;
+    val+=have*4;
+  }
+
+  return val;
+}
+
+// Устаревшая обёртка для совместимости
+function blockBonus(card){ return blockingValue(card); }
+
+function cardValSmart(card,captured){
+  if(deadMonths().has(card.m)) return typeVal(card)*0.1;
+  return cardVal(card,captured);
+}
+
+function gamePhase(){ return 1-G.deck.length/24; }
+
+// Оценка ВСЕХ яку одновременно с вероятностями
+function portfolioScore(card, captured){
+  const all=[...captured,card];
+  const known=knownCards();
+  const deckLeft=G.deck.length+G.pHand.length;
+
+  const targets=[
+    {v:10, need:[{t:'bright',m:1},{t:'bright',m:3},{t:'bright',m:8},{t:'bright',m:12}]},
+    {v:5,  need:[{sub:'boar'},{sub:'deer'},{sub:'butterfly'}]},
+    {v:5,  need:[{sub:'poetry',m:1},{sub:'poetry',m:2},{sub:'poetry',m:3}]},
+    {v:5,  need:[{sub:'blue',m:6},{sub:'blue',m:9},{sub:'blue',m:10}]},
+    {v:3,  need:[{sub:'curtain'},{sub:'sake'}]},
+    {v:3,  need:[{sub:'moon'},{sub:'sake'}]},
+    {v:5,  need:[{t:'bright',m:1},{t:'bright',m:3},{t:'bright',m:8}]},
+  ];
+
+  let total=0;
+  for(const t of targets){
+    let prob=1,alreadyHave=0;
+    for(const n of t.need){
+      const inMine=all.some(c=>(!n.t||c.t===n.t)&&(!n.m||c.m===n.m)&&(!n.sub||c.sub===n.sub));
+      if(inMine){alreadyHave++;continue;}
+      const takenByOther=known.some(c=>(!n.t||c.t===n.t)&&(!n.m||c.m===n.m)&&(!n.sub||c.sub===n.sub));
+      if(takenByOther){prob=0;break;}
+      prob*=Math.min(0.6,deckLeft/14);
+    }
+    if(prob>0) total+=t.v*prob*(alreadyHave/t.need.length+0.1);
+  }
+  return total;
+}
+
+// Оценка близости к следующему яку (для кои-кои решения)
+function nearCompletionBonus(){
+  const cap=G.aCap;
+  let bonus=0;
+  const dl=G.deck.length;
+  const p=v=>Math.min(v,dl/12);
+
+  const ist=['boar','deer','butterfly'].filter(s=>cap.some(c=>c.sub===s)).length;
+  if(ist===2) bonus+=5*p(0.4);
+  if(ist===1) bonus+=5*p(0.15);
+
+  const poetry=cap.filter(c=>c.sub==='poetry').length;
+  if(poetry===2) bonus+=5*p(0.35);
+
+  const blue=cap.filter(c=>c.sub==='blue').length;
+  if(blue===2) bonus+=5*p(0.35);
+
+  const br=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length;
+  if(br===2) bonus+=5*p(0.25);
+  if(br===3) bonus+=3*p(0.4);
+
+  const hasCur=cap.some(c=>c.sub==='curtain'),hasMoon=cap.some(c=>c.sub==='moon');
+  const hasSake=cap.some(c=>c.sub==='sake');
+  if((hasCur||hasMoon)&&!hasSake) bonus+=3*p(0.3);
+  if(hasSake&&(!hasCur||!hasMoon)) bonus+=3*p(0.25);
+
+  return bonus;
+}
+
+// ── Кои-кои решение по уровню ───────────────────────────────────
+function aiShouldKoiKoi(pts){
+  if(DIFF<=2) return pts<3;
+  if(DIFF===3) return pts<4;
+
+  const matchDiff=G.scores[1]-G.scores[0]; // >0 = ИИ впереди
+  const losing=matchDiff<-6, winning=matchDiff>8;
+  const near=nearCompletionBonus();
+
+  if(DIFF===4){
+    if(pts>=5&&near<1.5) return false;
+    if(pts<3)  return true;
+    return near>pts*0.4;
+  }
+
+  if(DIFF===5){
+    if(losing&&pts<8)  return true;
+    if(winning&&pts>=3) return false;
+    const topThreat=playerThreats()[0]?.urgency||0;
+    if(topThreat>=8) return false; // игрок близко к яку — стоп
+    return pts<4||near>pts*0.5;
+  }
+
+  // Уровни 6-7: EV расчёт
+  const pSuccess=Math.min(0.75,G.deck.length/16);
+  const expectedGain=near*pSuccess;
+  const topThreat=playerThreats()[0]?.urgency||0;
+  const playerRisk=(G.koiKoi?2:1)*topThreat*0.25;
+
+  if(winning&&pts>=3)   return false;
+  if(losing&&near>1)    return true;
+
+  if(DIFF===7){
+    // Гроссмейстер: учитывает фазу и кои-кои риск
+    const phase=gamePhase();
+    if(phase>0.7&&pts>=3) return false; // поздняя игра — берём гарантированное
+    if(G.koiKoi&&topThreat>=6) return false; // игрок рискнул — не давать шанс
+  }
+
+  return expectedGain>playerRisk&&expectedGain>pts*0.3;
+}
+
+// ── Выбор карты по уровню сложности ─────────────────────────────
+function aiChooseIdx(){
+  const hand=G.aHand;
+  const captures=hand.map((card,i)=>{
+    const matches=G.table.filter(t=>t.m===card.m);
+    return matches.length?{i,card,matches}:null;
+  }).filter(Boolean);
+
+  // 1 — Новичок: 40% случайно игнорирует захват
+  if(DIFF===1){
+    if(captures.length&&Math.random()>0.3)
+      return captures[Math.floor(Math.random()*captures.length)].i;
+    return Math.floor(Math.random()*hand.length);
+  }
+
+  // 2 — Любитель: всегда берёт, первое совпадение, жертвует дешёвым
+  if(DIFF===2){
+    if(captures.length) return captures[0].i;
+    return hand.reduce((bi,c,i)=>typeVal(c)<typeVal(hand[bi])?i:bi,0);
+  }
+
+  // 3 — Игрок: тип карты + базовое знание яку
+  if(DIFF===3){
+    if(captures.length){
+      let best=captures[0].i,bs=-Infinity;
+      captures.forEach(({i,card,matches})=>{
+        // Смешиваем ценность типа и базовую пользу для яку
+        const s=typeVal(card)*0.5+cardVal(card,G.aCap)*0.5+
+                Math.max(...matches.map(m=>typeVal(m)*0.5+cardVal(m,G.aCap)*0.5));
+        if(s>bs){bs=s;best=i;}
+      });
+      return best;
+    }
+    // Жертвует наименее полезной по типу
+    return hand.reduce((bi,c,i)=>typeVal(c)<typeVal(hand[bi])?i:bi,0);
+  }
+
+  // 4 — Тактик: яку + мёртвые месяцы
+  if(DIFF===4){
+    if(captures.length){
+      let best=captures[0].i,bs=-Infinity;
+      captures.forEach(({i,card,matches})=>{
+        const s=cardValSmart(card,G.aCap)+Math.max(...matches.map(m=>cardValSmart(m,G.aCap)));
+        if(s>bs){bs=s;best=i;}
+      });
+      return best;
+    }
+    return hand.reduce((bi,c,i)=>cardValSmart(c,G.aCap)<cardValSmart(hand[bi],G.aCap)?i:bi,0);
+  }
+
+  // 5 — Стратег: яку + блокировка угроз + счёт матча
+  if(DIFF===5){
+    const matchDiff=G.scores[1]-G.scores[0];
+    const blockWeight=matchDiff>5?0.6:1.0; // если выигрывает — меньше блокирует
+    if(captures.length){
+      let best=captures[0].i,bs=-Infinity;
+      captures.forEach(({i,card,matches})=>{
+        let s=cardValSmart(card,G.aCap);
+        matches.forEach(m=>{
+          s+=cardValSmart(m,G.aCap)+blockingValue(m)*blockWeight;
+        });
+        if(s>bs){bs=s;best=i;}
+      });
+      return best;
+    }
+    const needs=playerNeeds();
+    return hand.reduce((bi,c,i)=>{
+      let s=cardValSmart(c,G.aCap);
+      if(playerWants(c,needs)) s+=18;
+      return s<(()=>{ let v=cardValSmart(hand[bi],G.aCap); if(playerWants(hand[bi],needs))v+=18; return v;})() ?i:bi;
+    },0);
+  }
+
+  // 6 — Аналитик: портфель + взвешенная блокировка
+  if(DIFF===6){
+    if(captures.length){
+      let best=captures[0].i,bs=-Infinity;
+      captures.forEach(({i,card,matches})=>{
+        let own=portfolioScore(card,G.aCap);
+        let blk=0;
+        matches.forEach(m=>{
+          own+=portfolioScore(m,G.aCap);
+          blk+=blockingValue(m);
+        });
+        // Синергия: карта нужна нам И блокирует противника
+        const synergy=(own>3&&blk>5)?1.4:1.0;
+        const s=(own+blk)*synergy;
+        if(s>bs){bs=s;best=i;}
+      });
+      return best;
+    }
+    const needs=playerNeeds();
+    return hand.reduce((bi,c,i)=>{
+      let s=portfolioScore(c,G.aCap);
+      if(playerWants(c,needs)) s+=22;
+      return s<(()=>{ let v=portfolioScore(hand[bi],G.aCap); if(playerWants(hand[bi],needs))v+=22; return v;})() ?i:bi;
+    },0);
+  }
+
+  // 7 — Гроссмейстер: портфель + фазы + агрессивная блокировка
+  const threats=playerThreats();
+  const phase=gamePhase();
+  const topThreat=threats[0];
+  const blockMode=phase>0.65&&topThreat?.urgency>=6;
+  const koiMult=G.koiKoi?1.6:1;
+
+  if(captures.length){
+    let best=captures[0].i,bs=-Infinity;
+    captures.forEach(({i,card,matches})=>{
+      let s=portfolioScore(card,G.aCap);
+      matches.forEach(m=>{
+        const blk=blockBonus(m,threats)*koiMult;
+        s+=blockMode? blk*1.5 : portfolioScore(m,G.aCap)+blk;
+      });
+      if(s>bs){bs=s;best=i;}
+    });
+    return best;
+  }
+  const needs=playerNeeds();
+  return hand.reduce((bi,c,i)=>{
+    let s=portfolioScore(c,G.aCap);
+    const needed=playerWants(c,needs);
+    if(needed) s+=phase>0.5?35*koiMult:18;
+    return s<(()=>{ let v=portfolioScore(hand[bi],G.aCap); if(playerWants(hand[bi],needs))v+=(phase>0.5?35*koiMult:18); return v;})() ?i:bi;
+  },0);
+}
+
+function aiTurnStart(){
+  if(!G.aHand.length){endRound();return;}
+  G.turn='ai';G.phase='wait';G.msg='Ход компьютера...';draw();
+  setTimeout(aiPlay,850);
+}
+// ── Оценка карты для яку (маргинальная польза) ──────────────────
+function cardVal(card, captured){
+  const before=yakuPts(getYaku(captured));
+  const after =yakuPts(getYaku([...captured,card]));
+  let pot=0;
+  const istKeys=['boar','deer','butterfly'];
+  if(card.sub&&istKeys.includes(card.sub)){
+    const have=istKeys.filter(s=>captured.some(c=>c.sub===s)).length;
+    pot+=have*12;
+  }
+  if(card.t==='ribbon'&&card.sub==='poetry'){
+    pot+=captured.filter(c=>c.t==='ribbon'&&c.sub==='poetry').length*10;
+  }
+  if(card.t==='ribbon'&&card.sub==='blue'){
+    pot+=captured.filter(c=>c.t==='ribbon'&&c.sub==='blue').length*10;
+  }
+  if(card.t==='bright'&&card.sub!=='rain'){
+    pot+=captured.filter(c=>c.t==='bright'&&c.sub!=='rain').length*8;
+  }
+  if(card.sub==='sake')   pot+=8;
+  if(card.sub==='curtain'||card.sub==='moon') pot+=6;
+  return (after-before)*10+pot+typeVal(card)*0.3;
+}
+
+// Карты которые нужны игроку (для блокировки)
+function playerNeeds(){
+  const cap=G.pCap, need=[];
+  const istKeys=['boar','deer','butterfly'];
+  istKeys.forEach(s=>{ if(!cap.some(c=>c.sub===s)) need.push({sub:s}); });
+  [[1,'poetry'],[2,'poetry'],[3,'poetry']].forEach(([m,s])=>{
+    if(!cap.some(c=>c.m===m&&c.sub===s)) need.push({m,sub:s});
+  });
+  [[6,'blue'],[9,'blue'],[10,'blue']].forEach(([m,s])=>{
+    if(!cap.some(c=>c.m===m&&c.sub===s)) need.push({m,sub:s});
+  });
+  [1,3,8,11,12].forEach(m=>{
+    if(!cap.some(c=>c.m===m&&c.t==='bright')) need.push({m,t:'bright'});
+  });
+  return need;
+}
+
+function playerWants(card, needs){
+  return needs.some(n=>
+    (!n.m||n.m===card.m)&&
+    (!n.sub||n.sub===card.sub)&&
+    (!n.t||n.t===card.t)
+  );
+}
+
+// ── Вспомогательные функции анализа ────────────────────────────
+
+function knownCards(){
+  return [...G.table,...G.pCap,...G.aCap];
+}
+
+function deadMonths(){
+  const known=knownCards();
+  const dead=new Set();
+  for(let m=1;m<=12;m++)
+    if(known.filter(c=>c.m===m).length>=3) dead.add(m);
+  return dead;
+}
+
+function playerThreats(){
+  const cap=G.pCap, threats=[];
+  const istHave=['boar','deer','butterfly'].filter(s=>cap.some(c=>c.sub===s)).length;
+  const brights=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length;
+  const poetry=cap.filter(c=>c.sub==='poetry').length;
+  const blue=cap.filter(c=>c.sub==='blue').length;
+  const hasSake=cap.some(c=>c.sub==='sake');
+  if(istHave>=2)    threats.push({type:'ist',    urgency:istHave*5});
+  if(brights>=2)    threats.push({type:'bright',  urgency:brights*3});
+  if(poetry>=2)     threats.push({type:'akatan',  urgency:poetry*4});
+  if(blue>=2)       threats.push({type:'aotan',   urgency:blue*4});
+  if(hasSake)       threats.push({type:'viewing', urgency:4});
+  return threats.sort((a,b)=>b.urgency-a.urgency);
+}
+
+// Блокировочная ценность карты — насколько опасно отдать её игроку
+function blockingValue(card){
+  const cap=G.pCap;
+  let val=0;
+
+  // ── САКЕ — самая опасная карта, блокирует ДВА яку ──────────
+  // Ханами (Занавес+Саке=3оч) И Цукими (Луна+Саке=3оч)
+  if(card.sub==='sake'){
+    val+=8; // базовая угроза — саке всегда опасно
+    const hasCurtain=cap.some(c=>c.sub==='curtain');
+    const hasMoon=cap.some(c=>c.sub==='moon');
+    if(hasCurtain) val+=15; // Ханами почти готова!
+    if(hasMoon)    val+=15; // Цукими почти готова!
+    if(hasCurtain&&hasMoon) val+=10; // обе угрозы сразу
+  }
+
+  // ── Занавес и Луна — яркие карты просмотра ──────────────────
+  if(card.sub==='curtain'||card.sub==='moon'){
+    const hasSake=cap.some(c=>c.sub==='sake');
+    val+=hasSake?16:5; // если саке уже есть → критично
+    // Ещё и яркая → угроза Санко
+    const br=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length;
+    val+=br*5;
+    if(br>=2) val+=8; // близко к Санко
+  }
+
+  // ── ИСТ: кабан/олень/бабочка ────────────────────────────────
+  if(['boar','deer','butterfly'].includes(card.sub)){
+    const have=['boar','deer','butterfly'].filter(s=>cap.some(c=>c.sub===s)).length;
+    val+=have*10; // 2/3 готово → очень опасно (+20)
+    if(have===2) val+=10; // последняя нужная карта — критично!
+  }
+
+  // ── Поэтические ленты (Ака-тан) ─────────────────────────────
+  if(card.sub==='poetry'){
+    const have=cap.filter(c=>c.sub==='poetry').length;
+    val+=have*9;
+    if(have===2) val+=8; // последняя нужная
+  }
+
+  // ── Синие ленты (Ао-тан) ────────────────────────────────────
+  if(card.sub==='blue'){
+    const have=cap.filter(c=>c.sub==='blue').length;
+    val+=have*9;
+    if(have===2) val+=8;
+  }
+
+  // ── Яркие карты (Санко/Сико/Гоко) ───────────────────────────
+  if(card.t==='bright'&&card.sub!=='rain'){
+    const have=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length;
+    val+=have*5;
+    if(have>=2) val+=6;
+    if(have>=3) val+=12; // близко к Гоко
+  }
+
+  // ── Журавль (м.1 яркая) — легко собрать Санко ───────────────
+  if(card.sub==='crane'){
+    const have=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length;
+    val+=have*4;
+  }
+
+  return val;
+}
+
+// Устаревшая обёртка для совместимости
+function blockBonus(card){ return blockingValue(card); }
+
+function cardValSmart(card,captured){
+  if(deadMonths().has(card.m)) return typeVal(card)*0.1;
+  return cardVal(card,captured);
+}
+
+function gamePhase(){ return 1-G.deck.length/24; }
+
+// Оценка ВСЕХ яку одновременно с вероятностями
+function portfolioScore(card, captured){
+  const all=[...captured,card];
+  const known=knownCards();
+  const deckLeft=G.deck.length+G.pHand.length;
+
+  const targets=[
+    {v:10, need:[{t:'bright',m:1},{t:'bright',m:3},{t:'bright',m:8},{t:'bright',m:12}]},
+    {v:5,  need:[{sub:'boar'},{sub:'deer'},{sub:'butterfly'}]},
+    {v:5,  need:[{sub:'poetry',m:1},{sub:'poetry',m:2},{sub:'poetry',m:3}]},
+    {v:5,  need:[{sub:'blue',m:6},{sub:'blue',m:9},{sub:'blue',m:10}]},
+    {v:3,  need:[{sub:'curtain'},{sub:'sake'}]},
+    {v:3,  need:[{sub:'moon'},{sub:'sake'}]},
+    {v:5,  need:[{t:'bright',m:1},{t:'bright',m:3},{t:'bright',m:8}]},
+  ];
+
+  let total=0;
+  for(const t of targets){
+    let prob=1,alreadyHave=0;
+    for(const n of t.need){
+      const inMine=all.some(c=>(!n.t||c.t===n.t)&&(!n.m||c.m===n.m)&&(!n.sub||c.sub===n.sub));
+      if(inMine){alreadyHave++;continue;}
+      const takenByOther=known.some(c=>(!n.t||c.t===n.t)&&(!n.m||c.m===n.m)&&(!n.sub||c.sub===n.sub));
+      if(takenByOther){prob=0;break;}
+      prob*=Math.min(0.6,deckLeft/14);
+    }
+    if(prob>0) total+=t.v*prob*(alreadyHave/t.need.length+0.1);
+  }
+  return total;
+}
+
+// Оценка близости к следующему яку (для кои-кои решения)
+function nearCompletionBonus(){
+  const cap=G.aCap;
+  let bonus=0;
+  const dl=G.deck.length;
+  const p=v=>Math.min(v,dl/12);
+
+  const ist=['boar','deer','butterfly'].filter(s=>cap.some(c=>c.sub===s)).length;
+  if(ist===2) bonus+=5*p(0.4);
+  if(ist===1) bonus+=5*p(0.15);
+
+  const poetry=cap.filter(c=>c.sub==='poetry').length;
+  if(poetry===2) bonus+=5*p(0.35);
+
+  const blue=cap.filter(c=>c.sub==='blue').length;
+  if(blue===2) bonus+=5*p(0.35);
+
+  const br=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length;
+  if(br===2) bonus+=5*p(0.25);
+  if(br===3) bonus+=3*p(0.4);
+
+  const hasCur=cap.some(c=>c.sub==='curtain'),hasMoon=cap.some(c=>c.sub==='moon');
+  const hasSake=cap.some(c=>c.sub==='sake');
+  if((hasCur||hasMoon)&&!hasSake) bonus+=3*p(0.3);
+  if(hasSake&&(!hasCur||!hasMoon)) bonus+=3*p(0.25);
+
+  return bonus;
+}
+
+// ── Кои-кои решение по уровню ───────────────────────────────────
+function aiShouldKoiKoi(pts){
+  if(DIFF<=2) return pts<3;
+  if(DIFF===3) return pts<4;
+
+  const matchDiff=G.scores[1]-G.scores[0]; // >0 = ИИ впереди
+  const losing=matchDiff<-6, winning=matchDiff>8;
+  const near=nearCompletionBonus();
+
+  if(DIFF===4){
+    if(pts>=5&&near<1.5) return false;
+    if(pts<3)  return true;
+    return near>pts*0.4;
+  }
+
+  if(DIFF===5){
+    if(losing&&pts<8)  return true;
+    if(winning&&pts>=3) return false;
+    const topThreat=playerThreats()[0]?.urgency||0;
+    if(topThreat>=8) return false; // игрок близко к яку — стоп
+    return pts<4||near>pts*0.5;
+  }
+
+  // Уровни 6-7: EV расчёт
+  const pSuccess=Math.min(0.75,G.deck.length/16);
+  const expectedGain=near*pSuccess;
+  const topThreat=playerThreats()[0]?.urgency||0;
+  const playerRisk=(G.koiKoi?2:1)*topThreat*0.25;
+
+  if(winning&&pts>=3)   return false;
+  if(losing&&near>1)    return true;
+
+  if(DIFF===7){
+    // Гроссмейстер: учитывает фазу и кои-кои риск
+    const phase=gamePhase();
+    if(phase>0.7&&pts>=3) return false; // поздняя игра — берём гарантированное
+    if(G.koiKoi&&topThreat>=6) return false; // игрок рискнул — не давать шанс
+  }
+
+  return expectedGain>playerRisk&&expectedGain>pts*0.3;
+}
+
+// ── Выбор карты по уровню сложности ─────────────────────────────
+function aiChooseIdx(){
+  const hand=G.aHand;
+  const captures=hand.map((card,i)=>{
+    const matches=G.table.filter(t=>t.m===card.m);
+    return matches.length?{i,card,matches}:null;
+  }).filter(Boolean);
+
+  // ── Уровень 1: Новичок — полный рандом ──────────────────────
+  if(DIFF===1){
+    if(captures.length)
+      return captures[Math.floor(Math.random()*captures.length)].i;
+    return Math.floor(Math.random()*hand.length);
+  }
+
+  // ── Уровень 2: Любитель — знает ценность типов ──────────────
+  if(DIFF===2){
+    if(captures.length) return captures[0].i;
+    // Жертвует самой дешёвой картой
+    return hand.reduce((bi,c,i)=>typeVal(c)<typeVal(hand[bi])?i:bi,0);
+  }
+
+  // ── Уровень 3: Опытный — оценивает своё яку ─────────────────
+  if(DIFF===3){
+    if(captures.length){
+      let best=captures[0].i,bs=-Infinity;
+      captures.forEach(({i,card,matches})=>{
+        const s=cardVal(card,G.aCap)+Math.max(...matches.map(m=>cardVal(m,G.aCap)));
+        if(s>bs){bs=s;best=i;}
+      });
+      return best;
+    }
+    let best=0,bs=Infinity;
+    hand.forEach((c,i)=>{const s=cardVal(c,G.aCap);if(s<bs){bs=s;best=i;}});
+    return best;
+  }
+
+  // ── Уровень 4: Тактик — + мёртвые месяцы ───────────────────
+  if(DIFF===4){
+    if(captures.length){
+      let best=captures[0].i,bs=-Infinity;
+      captures.forEach(({i,card,matches})=>{
+        const s=cardValSmart(card,G.aCap)+
+                Math.max(...matches.map(m=>cardValSmart(m,G.aCap)));
+        if(s>bs){bs=s;best=i;}
+      });
+      return best;
+    }
+    let best=0,bs=Infinity;
+    hand.forEach((c,i)=>{
+      const s=cardValSmart(c,G.aCap);
+      if(s<bs){bs=s;best=i;}
+    });
+    return best;
+  }
+
+  // ── Уровень 5: Стратег — + блокировка угроз игрока ──────────
+  if(DIFF===5){
+    const threats=playerThreats();
+    if(captures.length){
+      let best=captures[0].i,bs=-Infinity;
+      captures.forEach(({i,card,matches})=>{
+        let s=cardValSmart(card,G.aCap);
+        matches.forEach(m=>{
+          s+=cardValSmart(m,G.aCap);
+          s+=blockBonus(m,threats);
+        });
+        if(s>bs){bs=s;best=i;}
+      });
+      return best;
+    }
+    const needs=playerNeeds();
+    let best=0,bs=Infinity;
+    hand.forEach((c,i)=>{
+      let s=cardValSmart(c,G.aCap);
+      if(playerWants(c,needs)) s+=15;
+      if(s<bs){bs=s;best=i;}
+    });
+    return best;
+  }
+
+  // ── Уровень 6: Аналитик — + вероятности ─────────────────────
+  if(DIFF===6){
+    const threats=playerThreats();
+    // Оцениваем достижимость своих яку
+    const istFeas=yakuFeasibility(
+      ['boar','deer','butterfly'].filter(s=>!G.aCap.some(c=>c.sub===s)),[]
+    );
+    const akatanFeas=yakuFeasibility(
+      [],[...[[1,'ribbon'],[2,'ribbon'],[3,'ribbon']]
+        .filter(([m])=>!G.aCap.some(c=>c.m===m&&c.sub==='poetry'))]
+    );
+
+    if(captures.length){
+      let best=captures[0].i,bs=-Infinity;
+      captures.forEach(({i,card,matches})=>{
+        let s=cardValSmart(card,G.aCap);
+        // Бонус если эта карта нужна для достижимого яку
+        if(card.sub&&['boar','deer','butterfly'].includes(card.sub)) s*=(1+istFeas);
+        if(card.sub==='poetry') s*=(1+akatanFeas);
+        matches.forEach(m=>{
+          s+=cardValSmart(m,G.aCap)+blockBonus(m,threats);
+          if(m.sub&&['boar','deer','butterfly'].includes(m.sub)) s*=(1+istFeas);
+        });
+        if(s>bs){bs=s;best=i;}
+      });
+      return best;
+    }
+    const needs=playerNeeds();
+    let best=0,bs=Infinity;
+    hand.forEach((c,i)=>{
+      let s=cardValSmart(c,G.aCap);
+      if(playerWants(c,needs)) s+=20;
+      if(s<bs){bs=s;best=i;}
+    });
+    return best;
+  }
+
+  // ── Уровень 7: Гроссмейстер — + фазы игры, кои-кои риск ────
+  const threats=playerThreats();
+  const phase=gamePhase();
+  const topThreat=threats[0];
+  const istFeas=yakuFeasibility(
+    ['boar','deer','butterfly'].filter(s=>!G.aCap.some(c=>c.sub===s)),[]
+  );
+
+  // Поздняя игра + высокая угроза → агрессивная блокировка
+  const blockMode=phase>0.65&&topThreat?.urgency>=6;
+  // Игрок сказал кои-кои → ещё агрессивнее
+  const koiRisk=G.koiKoi?1.5:1;
+
+  if(captures.length){
+    let best=captures[0].i,bs=-Infinity;
+    captures.forEach(({i,card,matches})=>{
+      let s=cardValSmart(card,G.aCap);
+      if(card.sub&&['boar','deer','butterfly'].includes(card.sub)) s*=(1+istFeas);
+
+      matches.forEach(m=>{
+        const ownVal=cardValSmart(m,G.aCap);
+        const blk=blockBonus(m,threats)*koiRisk;
+        s+=blockMode ? blk*1.5 : ownVal+blk;
+      });
+      if(s>bs){bs=s;best=i;}
+    });
+    return best;
+  }
+
+  const needs=playerNeeds();
+  let best=0,bs=Infinity;
+  hand.forEach((c,i)=>{
+    let s=cardValSmart(c,G.aCap);
+    const isNeeded=playerWants(c,needs);
+    // Ранняя игра: жертвуем дешёвым
+    // Поздняя: удерживаем карты нужные игроку
+    if(isNeeded) s+=phase>0.5?30*koiRisk:15;
+    if(s<bs){bs=s;best=i;}
+  });
+  return best;
+}
+
+function aiTurnStart(){
+  if(!G.aHand.length){endRound();return;}
+  G.turn='ai';G.phase='wait';G.msg='Ход компьютера...';draw();
+  setTimeout(aiPlay,850);
+}
+// ── Оценка карты для яку (маргинальная польза) ──────────────────
+function cardVal(card, captured){
+  const before=yakuPts(getYaku(captured));
+  const after =yakuPts(getYaku([...captured,card]));
+  let pot=0;
+  const istKeys=['boar','deer','butterfly'];
+  if(card.sub&&istKeys.includes(card.sub)){
+    const have=istKeys.filter(s=>captured.some(c=>c.sub===s)).length;
+    pot+=have*12;
+  }
+  if(card.t==='ribbon'&&card.sub==='poetry'){
+    pot+=captured.filter(c=>c.t==='ribbon'&&c.sub==='poetry').length*10;
+  }
+  if(card.t==='ribbon'&&card.sub==='blue'){
+    pot+=captured.filter(c=>c.t==='ribbon'&&c.sub==='blue').length*10;
+  }
+  if(card.t==='bright'&&card.sub!=='rain'){
+    pot+=captured.filter(c=>c.t==='bright'&&c.sub!=='rain').length*8;
+  }
+  if(card.sub==='sake')   pot+=8;
+  if(card.sub==='curtain'||card.sub==='moon') pot+=6;
+  return (after-before)*10+pot+typeVal(card)*0.3;
+}
+
+// Карты которые нужны игроку (для блокировки)
+function playerNeeds(){
+  const cap=G.pCap, need=[];
+  const istKeys=['boar','deer','butterfly'];
+  istKeys.forEach(s=>{ if(!cap.some(c=>c.sub===s)) need.push({sub:s}); });
+  [[1,'poetry'],[2,'poetry'],[3,'poetry']].forEach(([m,s])=>{
+    if(!cap.some(c=>c.m===m&&c.sub===s)) need.push({m,sub:s});
+  });
+  [[6,'blue'],[9,'blue'],[10,'blue']].forEach(([m,s])=>{
+    if(!cap.some(c=>c.m===m&&c.sub===s)) need.push({m,sub:s});
+  });
+  [1,3,8,11,12].forEach(m=>{
+    if(!cap.some(c=>c.m===m&&c.t==='bright')) need.push({m,t:'bright'});
+  });
+  return need;
+}
+
+function playerWants(card, needs){
+  return needs.some(n=>
+    (!n.m||n.m===card.m)&&
+    (!n.sub||n.sub===card.sub)&&
+    (!n.t||n.t===card.t)
+  );
+}
+
+// ── Выбор карты по уровню сложности ─────────────────────────────
+function aiChooseIdx(){
+  const hand=G.aHand;
+  // Варианты с захватом
+  const captures=hand.map((card,i)=>{
+    const matches=G.table.filter(t=>t.m===card.m);
+    return matches.length?{i,card,matches}:null;
+  }).filter(Boolean);
+
+  if(DIFF===1){
+    // Новичок: первое совпадение или самая дорогая
+    if(captures.length) return captures[0].i;
+    return hand.reduce((bi,c,i)=>typeVal(c)>typeVal(hand[bi])?i:bi,0);
+  }
+
+  if(DIFF===2){
+    // Опытный: выбирает захват с лучшей совокупной пользой для яку
+    if(captures.length){
+      let best=captures[0].i, bs=-Infinity;
+      captures.forEach(({i,card,matches})=>{
+        const s=cardVal(card,G.aCap)+Math.max(...matches.map(m=>cardVal(m,G.aCap)));
+        if(s>bs){bs=s;best=i;}
+      });
+      return best;
+    }
+    // Нет захвата: кладём карту с наименьшей пользой для яку
+    let best=0, bs=Infinity;
+    hand.forEach((c,i)=>{const s=cardVal(c,G.aCap);if(s<bs){bs=s;best=i;}});
+    return best;
+  }
+
+  // Мастер: учитывает свою пользу + блокировку игрока
+  const needs=playerNeeds();
+  if(captures.length){
+    let best=captures[0].i, bs=-Infinity;
+    captures.forEach(({i,card,matches})=>{
+      let s=cardVal(card,G.aCap);
+      matches.forEach(m=>{
+        s+=cardVal(m,G.aCap);
+        if(playerWants(m,needs)) s+=20; // бонус за блокировку
+      });
+      if(s>bs){bs=s;best=i;}
+    });
+    return best;
+  }
+  // Нет захвата: жертвуем наименее полезной картой,
+  // предпочтительно той, которая не нужна игроку
+  let best=0, bs=Infinity;
+  hand.forEach((c,i)=>{
+    let s=cardVal(c,G.aCap);
+    if(playerWants(c,needs)) s+=15; // хуже жертвовать нужной игроку
+    if(s<bs){bs=s;best=i;}
+  });
+  return best;
+}
+
+function aiPlay(){
+  if(!G.aHand.length){endRound();return;}
+  const idx=aiChooseIdx();
+  const card=G.aHand[idx];
+  const matches=G.table.filter(c=>c.m===card.m);
+
+  // Фаза 1: показываем карту ИИ лицом вверх (как в реальной игре)
+  G.aiHL=idx; G.aiCard=card; G.aiTargets=[]; G.aiPreview=null;
+  G.msg=`ИИ открывает карту: месяц ${card.m} (${card.t})`; draw();
+
+  setTimeout(()=>{
+    // Фаза 2: показываем захват или куда ляжет
+    G.aiTargets=matches;
+    G.msg=matches.length>0
+      ?`ИИ захватит карты месяца ${card.m} (${matches.length} шт.)`
+      :`ИИ кладёт карту месяца ${card.m} на стол`;
+    draw();
+
+    setTimeout(()=>{
+      // Фаза 3: делаем ход
+      G.aiHL=-1; G.aiCard=null; G.aiTargets=[];
+      G.aHand.splice(idx,1);
+      const n=doCapture(card,G.aCap);
+      G.msg=n>0?`ИИ захватил ${n} карты (месяц ${card.m})`:'ИИ кладёт карту на стол';
+      draw(); setTimeout(aiDraw,600);
+    },500);
+  },500);
+}
+function aiDraw(){
+  if(!G.deck.length){endRound();return;}
+  const card=G.deck[G.deck.length-1]; // смотрим не вытаскивая
+  const matches=G.table.filter(c=>c.m===card.m);
+
+  // Показываем карту из колоды
+  G.aiPreview=card; G.aiTargets=matches;
+  G.msg=matches.length>0
+    ?`Из колоды: месяц ${card.m} — захват!`
+    :`Из колоды: месяц ${card.m} — на стол`;
+  draw();
+
+  setTimeout(()=>{
+    G.aiPreview=null; G.aiTargets=[];
+    G.deck.pop();
+    const n=doCapture(card,G.aCap);
+    G.msg+=n>0?'  ·  захват!':'  ·  на стол';
+    draw();
+    const yaku=getYaku(G.aCap),pts=yakuPts(yaku);
+    if(pts>G.aPrevPts){
+      G.aPrevPts=pts;
+      if(!aiShouldKoiKoi(pts)){
+        G.msg+=`  |  ИИ: яку ${pts} оч., стоп!`;
+        draw();setTimeout(()=>endRound('ai',pts*((G.koiKoi||G.aKoiKoi)?2:1)),1200);return;
+      }
+      G.aKoiKoi=true;
+      G.msg='🎴 ИИ говорит КОИ-КОИ! ('+pts+' оч.) — продолжает, множитель ×2 активен';
+      draw();
+      setTimeout(()=>{
+        if(!G.pHand.length&&!G.aHand.length){endRound();return;}
+        G.turn='player';G.phase='select';G.sel=null;
+        G.msg='Ваш ход — выберите карту из руки';draw();
+      },1400);
+      return;
+    }
+    if(!G.pHand.length&&!G.aHand.length){endRound();return;}
+    G.turn='player';G.phase='select';G.sel=null;
+    G.msg='Ваш ход — выберите карту из руки';draw();
+  },600);
+}
+function typeVal(c){return{bright:20,animal:10,ribbon:5,plain:1}[c.t]||0;}
+function endRound(winner,pts){
+  G.phase='roundover';
+  if(winner==='player'){
+    const base=yakuPts(G.currentYaku||getYaku(G.pCap));
+    const mult=(G.koiKoi||G.aKoiKoi)?2:1;
+    const mx=mult>1?` (${base}×2 кои-кои!)`:'';
+    G.scores[0]+=pts;G.msg=`Раунд ${G.round}: вы выиграли!  +${pts} очков${mx}`;
+  }
+  else if(winner==='ai'){
+    const base=yakuPts(getYaku(G.aCap));
+    const mult=(G.koiKoi||G.aKoiKoi)?2:1;
+    const mx=mult>1?` (${Math.round(pts/2)}×2 кои-кои!)`:'';
+    G.scores[1]+=pts;G.msg=`Раунд ${G.round}: ИИ выиграл!  +${pts} очков${mx}`;
+  }
+  else{
+    const mult=(G.koiKoi||G.aKoiKoi)?2:1;
+    const pp=yakuPts(getYaku(G.pCap)),ap=yakuPts(getYaku(G.aCap));
+    const mx=mult>1?' (×2 кои-кои!)':'';
+    if(pp>ap){G.scores[0]+=pp*mult;G.msg=`Раунд ${G.round}: по картам — вы!  +${pp*mult} оч.${mx}`;}
+    else if(ap>pp){G.scores[1]+=ap*mult;G.msg=`Раунд ${G.round}: по картам — ИИ!  +${ap*mult} оч.${mx}`;}
+    else G.msg=`Раунд ${G.round}: ничья`;
+  }
+  if(G.round>=G.rounds)G.phase='gameover';
+  draw();
+}
+
+// ── Рисование ────────────────────────────────────────────────────
+function draw(){
+  ct.clearRect(0,0,W,H);
+  ct.fillStyle='#0a0603';ct.fillRect(0,0,W,H);
+  if(G.phase==='start'||G.phase==='gameover'){drawOverlay();return;}
+  drawHeader();
+  drawAIHand();
+  drawTable();
+  drawDeck();
+  drawCapSummary();
+  drawPlayerHand();
+  drawMsgBar();
+  if(G.phase==='choose')    drawChoiceBtns();
+  if(G.phase==='roundover') drawRoundOver();
+}
+
+// Карта
+function drawCard(x,y,card,face=true,sel=false){
+  ct.save();
+  if(sel){ct.shadowColor='rgba(255,240,80,.95)';ct.shadowBlur=20;}
+  if(!face){
+    const g=ct.createLinearGradient(x,y,x+CW,y+CH);
+    g.addColorStop(0,'#2a1a6a');g.addColorStop(1,'#180e48');
+    ct.fillStyle=g;ct.fillRect(x,y,CW,CH);
+    ct.strokeStyle='#5a4aaa';ct.lineWidth=2;ct.strokeRect(x+2,y+2,CW-4,CH-4);
+    for(let i=0;i<3;i++)for(let j=0;j<5;j++){
+      if((i+j)%2===0){ct.fillStyle='rgba(255,255,255,.06)';ct.fillRect(x+4+i*17,y+4+j*15,17,15);}
+    }
+    ct.restore();return;
+  }
+  const m=MON[card.m-1];
+  const g=ct.createLinearGradient(x,y,x,y+CH);
+  g.addColorStop(0,lighten(m.c,30));g.addColorStop(1,m.c);
+  ct.fillStyle=g;ct.fillRect(x,y,CW,CH);
+  ct.strokeStyle='rgba(0,0,0,.6)';ct.lineWidth=2;ct.strokeRect(x,y,CW,CH);
+  ct.strokeStyle='rgba(255,255,255,.18)';ct.lineWidth=1;ct.strokeRect(x+3,y+3,CW-6,CH-6);
+
+  // Месяц (верх лево)
+  ct.fillStyle='rgba(255,255,255,.92)';ct.font='bold 11px Georgia';
+  ct.textAlign='left';ct.textBaseline='top';
+  ct.fillText(card.m+'月',x+5,y+5);
+
+  // Символ типа (центр)
+  const[sym,col]=tsc(card);
+  ct.fillStyle=col;ct.font='26px serif';
+  ct.textAlign='center';ct.textBaseline='middle';
+  ct.fillText(sym,x+CW/2,y+CH/2);
+
+  // Сабтип (под символом)
+  if(card.sub){
+    const sl={crane:'журав.',curtain:'занав.',moon:'луна',rain:'дождь',
+              sake:'саке',boar:'кабан',deer:'олень',butterfly:'бабочка',
+              poetry:'красн.',blue:'синяя'}[card.sub]||'';
+    ct.fillStyle='rgba(255,255,255,.75)';ct.font='8px Georgia';
+    ct.textAlign='center';ct.textBaseline='top';
+    ct.fillText(sl,x+CW/2,y+CH/2+15);
+  }
+
+  // Название месяца (низ)
+  ct.fillStyle='rgba(255,255,255,.55)';ct.font='9px Georgia';
+  ct.textAlign='center';ct.textBaseline='bottom';
+  ct.fillText(m.n,x+CW/2,y+CH-3);
+
+  ct.restore();
+}
+
+function tsc(c){
+  if(c.t==='bright') return['★','#ffd700'];
+  if(c.t==='animal') return['♦','#f0f0f0'];
+  if(c.t==='ribbon'){
+    if(c.sub==='poetry')return['▬','#ff5050'];
+    if(c.sub==='blue')  return['▬','#60a0ff'];
+    return['▬','#cc60cc'];
+  }
+  return['·','rgba(255,255,255,.45)'];
+}
+function lighten(h,n){
+  const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);
+  return`rgb(${Math.min(255,r+n)},${Math.min(255,g+n)},${Math.min(255,b+n)})`;
+}
+
+function drawHeader(){
+  ct.fillStyle='rgba(0,0,0,.7)';ct.fillRect(0,0,W,58);
+  ct.font='bold 16px Georgia';ct.textBaseline='middle';
+  ct.fillStyle='#f0e8d0';ct.textAlign='left';
+  ct.fillText(`ВЫ:  ${G.scores[0]} очков`,18,30);
+  ct.fillStyle='#c9a227';ct.textAlign='center';
+  ct.fillText(`— Раунд ${G.round} из ${G.rounds} —`,W/2,30);
+  ct.fillStyle='#c04040';ct.textAlign='right';
+  ct.fillText(`ИИ:  ${G.scores[1]} очков`,W-18,30);
+  ct.font='12px Georgia';
+  if(G.turn==='player'&&G.phase==='select'){ct.fillStyle='#80d060';ct.textAlign='left';ct.fillText('▶ ваш ход',18,48);}
+  else if(G.turn==='ai'){ct.fillStyle='#c06060';ct.textAlign='right';ct.fillText('ИИ думает ▶',W-18,48);}
+  if(G.koiKoi){ct.fillStyle='#c9a227';ct.textAlign='center';ct.fillText('★ Кои-Кои в игре!',W/2+80,48);}
+  // Кнопки сложности
+  // 7 кнопок сложности
+  const dlabels=['1','2','3','4','5','6','7'];
+  const dnames=['Новичок','Любитель','Опытный','Тактик','Стратег','Аналитик','Гросс'];
+  const bw=54,bh=20,gap=4,totalW=7*(bw+gap)-gap;
+  const bx0=(W-totalW)/2;
+  dlabels.forEach((lbl,d)=>{
+    const bx=bx0+d*(bw+gap), by=34;
+    const active=DIFF===d+1;
+    ct.fillStyle=active?'rgba(201,162,39,.4)':'rgba(30,20,5,.7)';
+    ct.strokeStyle=active?'#c9a227':'#5a3a10';ct.lineWidth=1.5;
+    ct.beginPath();rr(bx,by,bw,bh,4);ct.fill();ct.stroke();
+    ct.fillStyle=active?'#f0d070':'#5a4020';
+    ct.font=(active?'bold ':'')+'9px Georgia';
+    ct.textAlign='center';ct.textBaseline='middle';
+    ct.fillText((active?dnames[d]:lbl),bx+bw/2,by+bh/2);
+  });
+}
+
+function drawAIHand(){
+  ct.fillStyle='rgba(255,255,255,.3)';ct.font='13px Georgia';
+  ct.textAlign='left';ct.textBaseline='top';
+  ct.fillText(`Рука ИИ:  ${G.aHand.length} карт`,HX,62);
+  G.aHand.forEach((_,i)=>{
+    const hl=i===G.aiHL;
+    if(hl){ct.save();ct.shadowColor='rgba(255,120,60,.9)';ct.shadowBlur=22;}
+    // Подсвеченная карта показывается лицом вверх
+    // showFace=true только когда карта подсвечена И известна (лицом вверх)
+    const showFace=hl&&!!G.aiCard;
+    drawCard(HX+i*(CW+CG),YAI+(hl?-14:0), showFace?G.aiCard:null, showFace);
+    if(hl){
+      ct.strokeStyle='rgba(255,150,60,.9)';ct.lineWidth=3;
+      ct.strokeRect(HX+i*(CW+CG)-2,YAI-16,CW+4,CH+4);
+      ct.restore();
+    }
+  });
+}
+
+function drawTable(){
+  ct.fillStyle='rgba(0,0,0,.25)';ct.fillRect(TX-8,YTAB-22,5*(CW+CG)+6,3*(CH+CG)+30);
+  ct.fillStyle='rgba(255,255,255,.3)';ct.font='13px Georgia';
+  ct.textAlign='left';ct.textBaseline='top';
+  ct.fillText(`На столе:  ${G.table.length} карт`,TX,YTAB-18);
+  const sorted=[...G.table].sort((a,b)=>a.m-b.m);
+  sorted.forEach((card,i)=>{
+    const row=Math.floor(i/5), col=i%5;
+    const tx=TX+col*(CW+CG), ty=YTAB+row*(CH+CG);
+    const isTarget=G.aiTargets&&G.aiTargets.some(t=>t.id===card.id);
+    if(isTarget){
+      ct.save();ct.shadowColor='rgba(255,160,40,.9)';ct.shadowBlur=20;
+      ct.strokeStyle='rgba(255,160,40,.9)';ct.lineWidth=3;
+      ct.strokeRect(tx-3,ty-3,CW+6,CH+6);ct.restore();
+    }
+    drawCard(tx,ty,card,true,false);
+  });
+}
+
+function drawDeck(){
+  const dx=TX+5*(CW+CG)+10, dy=YTAB+CH/2-CG;
+  ct.fillStyle='rgba(255,255,255,.25)';ct.font='13px Georgia';
+  ct.textAlign='center';ct.textBaseline='bottom';
+  ct.fillText('Колода',dx+CW/2,dy-4);
+
+  // Превью карты из колоды (во время хода ИИ)
+  if(G.aiPreview){
+    drawCard(dx,dy-CH-14,G.aiPreview,true,false);
+    // Стрелка вниз
+    ct.strokeStyle='rgba(255,200,80,.8)';ct.lineWidth=2;ct.setLineDash([5,4]);
+    ct.beginPath();ct.moveTo(dx+CW/2,dy-12);ct.lineTo(dx+CW/2,dy-2);ct.stroke();
+    ct.setLineDash([]);
+    ct.fillStyle='rgba(255,200,80,.8)';
+    ct.beginPath();ct.moveTo(dx+CW/2,dy);ct.lineTo(dx+CW/2-6,dy-10);ct.lineTo(dx+CW/2+6,dy-10);ct.closePath();ct.fill();
+  }
+
+  if(G.deck.length>0){
+    drawCard(dx,dy,null,false);
+    ct.fillStyle='rgba(255,255,255,.7)';ct.font='bold 14px Georgia';
+    ct.textAlign='center';ct.textBaseline='top';
+    ct.fillText(G.deck.length,dx+CW/2,dy+CH+5);
+  }else{
+    ct.fillStyle='rgba(255,255,255,.15)';ct.fillRect(dx,dy,CW,CH);
+    ct.fillStyle='rgba(255,255,255,.3)';ct.font='12px Georgia';
+    ct.textAlign='center';ct.textBaseline='middle';
+    ct.fillText('пусто',dx+CW/2,dy+CH/2);
+  }
+}
+
+function drawCapSummary(){
+  // Счётная строка
+  function countLine(cap,align,x,col){
+    const B=cap.filter(c=>c.t==='bright').length,A=cap.filter(c=>c.t==='animal').length;
+    const R=cap.filter(c=>c.t==='ribbon').length,P=cap.filter(c=>c.t==='plain').length;
+    const pts=yakuPts(getYaku(cap));
+    ct.fillStyle=col;ct.font='13px Georgia';ct.textAlign=align;ct.textBaseline='middle';
+    ct.fillText(`★${B}  ♦${A}  ▬${R}  ·${P}  =  ${pts} оч.`,x,YCAP+10);
+  }
+  ct.fillStyle='rgba(0,0,0,.3)';ct.fillRect(0,YCAP-2,W,22);
+  ct.fillStyle='rgba(255,255,255,.35)';ct.font='bold 13px Georgia';
+  ct.textAlign='left';ct.textBaseline='middle';ct.fillText('ВЫ:',HX,YCAP+10);
+  countLine(G.pCap,'left',HX+38,'rgba(255,255,255,.85)');
+  ct.fillStyle='rgba(200,80,80,.45)';ct.textAlign='right';ct.fillText('ИИ:',W-HX,YCAP+10);
+  countLine(G.aCap,'right',W-HX-38,'rgba(220,150,150,.7)');
+
+  // Панель прогресса
+  const cap=G.pCap;
+  const has=(m,sub,t)=>cap.some(c=>c.m===m&&(!sub||c.sub===sub)&&(!t||c.t===t));
+  const rows=[
+    {label:'Ино-Сика-Тё',items:[
+      {n:'Кабан м.7',ok:has(7,'boar')},{n:'Олень м.10',ok:has(10,'deer')},{n:'Бабочка м.6',ok:has(6,'butterfly')}]},
+    {label:'Ака-тан',items:[
+      {n:'Красн. м.1',ok:has(1,'poetry')},{n:'Красн. м.2',ok:has(2,'poetry')},{n:'Красн. м.3',ok:has(3,'poetry')}]},
+    {label:'Ао-тан',items:[
+      {n:'Синяя м.6',ok:has(6,'blue')},{n:'Синяя м.9',ok:has(9,'blue')},{n:'Синяя м.10',ok:has(10,'blue')}]},
+    {label:'Яркие ★',items:[
+      {n:'Журавль м.1',ok:has(1,null,'bright')},{n:'Занавес м.3',ok:has(3,null,'bright')},
+      {n:'Луна м.8',ok:has(8,null,'bright')},{n:'Дождь м.11',ok:has(11,null,'bright')},{n:'Феникс м.12',ok:has(12,null,'bright')}]},
+    {label:'Ханами / Цукими',items:[
+      {n:'Занавес м.3',ok:has(3,null,'bright')},{n:'Луна м.8',ok:has(8,null,'bright')},{n:'Саке♦ м.9',ok:has(9,'sake')}]},
+  ];
+  ct.fillStyle='rgba(0,0,0,.38)';ct.fillRect(4,YPROG-2,W-8,158);
+  ct.fillStyle='rgba(201,162,39,.5)';ct.font='bold 10px Georgia';
+  ct.textAlign='center';ct.textBaseline='top';
+  ct.fillText('── прогресс к яку ──',W/2,YPROG+1);
+  const RH=28,LW=110;
+  rows.forEach((row,ri)=>{
+    const ry=YPROG+16+ri*RH;
+    const done=row.items.every(i=>i.ok);
+    ct.fillStyle=done?'#70e870':'#c9a227';
+    ct.font='bold 10px Georgia';ct.textAlign='left';ct.textBaseline='middle';
+    ct.fillText(row.label+':',8,ry+RH/2);
+    const iw=Math.floor((W-HX-LW-8)/row.items.length);
+    row.items.forEach((item,ii)=>{
+      ct.fillStyle=item.ok?'#70e870':'rgba(255,255,255,.3)';
+      ct.font=(item.ok?'bold ':'')+'11px Georgia';
+      ct.fillText((item.ok?'✓ ':'✗ ')+item.n,8+LW+ii*iw,ry+RH/2);
+    });
+  });
+}
+
+function drawPlayerHand(){
+  ct.fillStyle='rgba(255,255,255,.3)';ct.font='13px Georgia';
+  ct.textAlign='left';ct.textBaseline='top';
+  ct.fillText('Ваша рука:',HX,YPH-20);
+  G.pHand.forEach((card,i)=>{
+    const sel=G.sel===i&&(G.phase==='select'||G.phase==='choose');
+    drawCard(HX+i*(CW+CG),YPH+(sel?-10:0),card,true,sel);
+  });
+}
+
+function drawMsgBar(){
+  ct.fillStyle='rgba(0,0,0,.6)';ct.fillRect(0,YMSG,W,58);
+  ct.fillStyle='#f0d878';ct.font='bold 15px Georgia';
+  ct.textAlign='center';ct.textBaseline='middle';
+  ct.fillText(G.msg,W/2,YMSG+20);
+  ct.fillStyle='#6a5830';ct.font='11px Georgia';
+  ct.fillText('★=20оч  ♦=10оч  ▬=5оч  ·=1оч    |    Яку: Гоко·Сико·Санко·ИСТ·Ханами·Цукими·Ака-тан·Ао-тан',W/2,YMSG+42);
+}
+
+function mkbtn(x,y,w,h,label,bg,bc){
+  ct.fillStyle=bg;ct.strokeStyle=bc;ct.lineWidth=2.5;
+  ct.beginPath();rr(x,y,w,h,8);ct.fill();ct.stroke();
+  ct.fillStyle='#fff';ct.font='bold 15px Georgia';
+  ct.textAlign='center';ct.textBaseline='middle';
+  ct.fillText(label,x+w/2,y+h/2);
+}
+function rr(x,y,w,h,r){
+  ct.moveTo(x+r,y);ct.arcTo(x+w,y,x+w,y+h,r);
+  ct.arcTo(x+w,y+h,x,y+h,r);ct.arcTo(x,y+h,x,y,r);
+  ct.arcTo(x,y,x+w,y,r);ct.closePath();
+}
+
+function drawChoiceBtns(){
+  ct.fillStyle='rgba(255,255,255,.3)';ct.font='13px Georgia';
+  ct.textAlign='center';ct.textBaseline='top';
+  ct.fillText('Выберите:',W/2,YBTN-22);
+  mkbtn(14,YBTN,W/2-20,36,'✋  СТОП','#1a4a10','#50b030');
+  mkbtn(W/2+6,YBTN,W/2-20,36,'🎴  КОИ-КОИ','#4a1010','#c04040');
+}
+
+function drawRoundOver(){
+  ct.fillStyle='rgba(0,0,0,.78)';ct.fillRect(0,0,W,H);
+  ct.fillStyle='#f0d070';ct.font='bold 22px Georgia';
+  ct.textAlign='center';ct.textBaseline='middle';
+  ct.fillText(G.msg,W/2,H/2-34);
+  ct.fillStyle='#d4b896';ct.font='17px Georgia';
+  ct.fillText(`Общий счёт:  ВЫ ${G.scores[0]}  :  ИИ ${G.scores[1]}`,W/2,H/2+8);
+  if(G.round<G.rounds){
+    ct.fillStyle='#c9a227';ct.font='bold 14px Georgia';
+    ct.fillText('[ нажмите — следующий раунд ]',W/2,H/2+50);
+  }
+}
+
+function drawOverlay(){
+  ct.fillStyle='rgba(4,2,1,.9)';ct.fillRect(0,0,W,H);
+  ct.textAlign='center';
+  if(G.phase==='gameover'){
+    const win=G.scores[0]>G.scores[1];
+    ct.fillStyle=win?'#f0d070':'#c04040';
+    ct.font='bold 30px Georgia';ct.textBaseline='middle';
+    ct.fillText(win?'Вы победили! 🎉':'ИИ победил!',W/2,H/2-60);
+    ct.fillStyle='#c9a227';ct.font='22px Georgia';
+    ct.fillText(`${G.scores[0]}  :  ${G.scores[1]}`,W/2,H/2-14);
+  }else{
+    ct.fillStyle='#c9a227';ct.font='bold 26px Georgia';ct.textBaseline='middle';
+    ct.fillText('ハ  ХАНАФУДА  КОИ-КОИ  ハ',W/2,H/2-130);
+    ct.fillStyle='#d4b896';ct.font='15px Georgia';
+    [
+      '48 карт · 12 месяцев · 6 раундов',
+      '',
+      '★  Яркая   (光)  =  20 оч     ♦  Животное  (鳥)  =  10 оч',
+      '▬  Лента   (短)  =   5 оч     ·  Простая   (草)  =   1 оч',
+      '',
+      'Ваш ход:  нажмите карту из руки → выбрана → нажмите снова → ход',
+      'Совпал месяц с картой на столе — захват обеих карт',
+      'Затем вытягивается карта из колоды — то же правило',
+      '',
+      '★  Собрали комбинацию (яку) →  СТОП  (берёте очки)',
+      '   или  КОИ-КОИ  (продолжаете, но если проиграете — соперник ×2)',
+    ].forEach((l,i)=>ct.fillText(l,W/2,H/2-72+i*24));
+  }
+  ct.fillStyle='#c9a227';ct.font='bold 16px Georgia';ct.textBaseline='bottom';
+  ct.fillText(G.phase==='gameover'?'[ нажмите — сыграть снова ]':'[ нажмите — начать игру ]',W/2,H-24);
+}
+
+// ── События ───────────────────────────────────────────────────────
+cv.addEventListener('click',e=>{
+  const rect=cv.getBoundingClientRect();
+  const mx=(e.clientX-rect.left)*(W/rect.width);
+  const my=(e.clientY-rect.top)*(H/rect.height);
+
+  // Кнопки сложности в шапке
+  // 7 кнопок сложности
+  const _bw=54,_gap=4,_total=7*(_bw+_gap)-_gap,_bx0=(W-_total)/2;
+  for(let d=0;d<7;d++){
+    const bx=_bx0+d*(_bw+_gap);
+    if(mx>=bx&&mx<=bx+_bw&&my>=34&&my<=54){DIFF=d+1;draw();return;}
+  }
+  if(G.phase==='start'||G.phase==='gameover'){newGame();return;}
+  if(G.phase==='roundover'){G.round++;newRound();return;}
+
+  if(G.phase==='choose'){
+    if(mx>=14&&mx<=W/2-20&&my>=YBTN&&my<=YBTN+36) playerChoose(true);
+    if(mx>=W/2+6&&mx<=W-14&&my>=YBTN&&my<=YBTN+36) playerChoose(false);
+    return;
+  }
+
+  if((G.phase==='select')&&G.turn==='player'){
+    for(let i=0;i<G.pHand.length;i++){
+      const x=HX+i*(CW+CG), y=YPH+(G.sel===i?-10:0);
+      if(mx>=x&&mx<=x+CW&&my>=y-6&&my<=y+CH+6){
+        if(G.sel===i){ playerPlay(i); }
+        else{ G.sel=i; G.msg=`Выбрана карта: месяц ${G.pHand[i].m}, тип ${G.pHand[i].t}.  Нажмите снова для хода.`; draw(); }
+        return;
+      }
+    }
+    G.sel=null;draw();
+  }
+});
+
+// ── Старт ─────────────────────────────────────────────────────────
+draw();
+</script>
+</body>
+</html>
