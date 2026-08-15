@@ -90,6 +90,54 @@ async function saveMatchResult(result, playerScore, aiScore){
 // Регистрируем/обновляем пользователя сразу при открытии игры
 syncUser();
 
+// ── Покупка подсказки через Telegram Stars ────────────────────────
+const HINT_PRICE = 15; // звёзд за одну подсказку
+let hintsOwned = 0;
+let hintActive = null; // индекс подсвеченной карты-подсказки
+
+async function buyHint(){
+  if(!TG_USER){ G.msg='Подсказки доступны только в Telegram'; draw(); return; }
+  try{
+    const r = await fetch(`${API_BASE}/api/create-invoice`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        item:'hint',
+        amount_stars: HINT_PRICE,
+        title:'Подсказка',
+        description:'Показывает лучший ход в текущей ситуации'
+      })
+    });
+    const data = await r.json();
+    if(!data.invoice_link){ G.msg='Не удалось создать счёт'; draw(); return; }
+    window.Telegram.WebApp.openInvoice(data.invoice_link, (status)=>{
+      if(status==='paid'){
+        hintsOwned++;
+        G.msg='Подсказка куплена! Нажмите 💡 ещё раз, чтобы применить.';
+        draw();
+      }
+    });
+  }catch(e){ console.warn('buyHint failed', e); }
+}
+
+function useHint(){
+  if(hintsOwned<=0){ buyHint(); return; }
+  if(G.phase!=='select'||G.turn!=='player'||!G.pHand.length) return;
+  // Простая эвристика: подсвечиваем карту с лучшим immediate-захватом, иначе с наибольшей ценностью
+  let bestI=0,bestScore=-Infinity;
+  G.pHand.forEach((card,i)=>{
+    const matches=G.table.filter(t=>t.m===card.m);
+    let s=cardVal(card,G.pCap);
+    if(matches.length) s+=50+matches.reduce((a,m)=>a+typeVal(m),0);
+    if(s>bestScore){bestScore=s;bestI=i;}
+  });
+  hintsOwned--;
+  hintActive=bestI;
+  G.msg=`💡 Подсказка: карта №${bestI+1} слева`;
+  draw();
+  setTimeout(()=>{hintActive=null;draw();},3000);
+}
+
 const cv=document.getElementById('c');
 const ct=cv.getContext('2d');
 const W=450,H=800;
@@ -1377,6 +1425,13 @@ function drawHeader(){
     ct.textAlign='center';ct.textBaseline='middle';
     ct.fillText((active?dnames[d]:lbl),bx+bw/2,by+bh/2);
   });
+  // Кнопка подсказки (💡)
+  const hbx=W-40,hby=4,hbw=34,hbh=24;
+  ct.fillStyle='rgba(201,162,39,.35)';ct.strokeStyle='#c9a227';ct.lineWidth=1.5;
+  ct.beginPath();rr(hbx,hby,hbw,hbh,5);ct.fill();ct.stroke();
+  ct.fillStyle='#f0d070';ct.font='13px Georgia';
+  ct.textAlign='center';ct.textBaseline='middle';
+  ct.fillText(hintsOwned>0?`💡${hintsOwned}`:'💡',hbx+hbw/2,hby+hbh/2);
 }
 
 function drawAIHand(){
@@ -1506,6 +1561,12 @@ function drawPlayerHand(){
   G.pHand.forEach((card,i)=>{
     const sel=G.sel===i&&(G.phase==='select'||G.phase==='choose');
     drawCard(HX+i*(CW+CG),YPH+(sel?-10:0),card,true,sel);
+    if(hintActive===i){
+      const x=HX+i*(CW+CG),y=YPH+(sel?-10:0);
+      ct.save();ct.strokeStyle='rgba(80,220,255,.95)';ct.lineWidth=3;
+      ct.shadowColor='rgba(80,220,255,.9)';ct.shadowBlur=16;
+      ct.strokeRect(x-3,y-3,CW+6,CH+6);ct.restore();
+    }
   });
 }
 
@@ -1597,6 +1658,8 @@ cv.addEventListener('click',e=>{
     const bx=_bx0+d*(_bw+_gap);
     if(mx>=bx&&mx<=bx+_bw&&my>=34&&my<=54){DIFF=d+1;draw();return;}
   }
+  // Кнопка подсказки
+  if(mx>=W-40&&mx<=W-6&&my>=4&&my<=28){ useHint(); return; }
   if(G.phase==='start'||G.phase==='gameover'){newGame();return;}
   if(G.phase==='roundover'){G.round++;newRound();return;}
 
