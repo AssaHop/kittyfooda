@@ -48,6 +48,48 @@ if(window.Telegram && window.Telegram.WebApp){
   tg.onEvent('viewportChanged',applyVh);
 }
 
+// ── Сохранение прогресса через бэкенд (Vercel + Supabase) ────────
+const API_BASE = 'https://kittyfooda.vercel.app';
+let TG_USER = null;
+if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe){
+  TG_USER = window.Telegram.WebApp.initDataUnsafe.user || null;
+}
+
+async function syncUser(){
+  if(!TG_USER) return null; // не в Telegram — работаем без сохранения
+  try{
+    const r = await fetch(`${API_BASE}/api/save-progress`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        telegram_id: TG_USER.id,
+        username: TG_USER.username || TG_USER.first_name || '',
+        stars_balance: 0
+      })
+    });
+    const data = await r.json();
+    return data.user || null;
+  }catch(e){ console.warn('syncUser failed', e); return null; }
+}
+
+async function saveMatchResult(result, playerScore, aiScore){
+  if(!TG_USER) return;
+  try{
+    await fetch(`${API_BASE}/api/save-progress`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        telegram_id: TG_USER.id,
+        username: TG_USER.username || TG_USER.first_name || '',
+        stars_balance: 0
+      })
+    });
+  }catch(e){ console.warn('saveMatchResult failed', e); }
+}
+
+// Регистрируем/обновляем пользователя сразу при открытии игры
+syncUser();
+
 const cv=document.getElementById('c');
 const ct=cv.getContext('2d');
 const W=450,H=800;
@@ -1216,7 +1258,11 @@ function endRound(winner,pts){
     else if(ap>pp){G.scores[1]+=ap*mult;G.msg=`Раунд ${G.round}: по картам — ИИ!  +${ap*mult} оч.${mx}`;}
     else G.msg=`Раунд ${G.round}: ничья`;
   }
-  if(G.round>=G.rounds)G.phase='gameover';
+  if(G.round>=G.rounds){
+    G.phase='gameover';
+    const result = G.scores[0]>G.scores[1]?'win':(G.scores[0]<G.scores[1]?'lose':'draw');
+    saveMatchResult(result, G.scores[0], G.scores[1]);
+  }
   draw();
 }
 
