@@ -331,7 +331,7 @@ function playerDraw(){
     const yaku=getYaku(G.pCap),pts=yakuPts(yaku);
     if(pts>G.prevPts){
       G.prevPts=pts;G.currentYaku=yaku;G.phase='choose';
-      G.msg=`Яку!  ${yaku.map(y=>y.n).join(' + ')}  =  ${pts} очков.   Стоп или Кои-Кои?`;
+      G.msg=`Яку!  ${yaku.map(y=>y.n).join(' + ')}  =  ${pts} очков.   Стоп или Мяу-Мяу?`;
       draw();return;
     }
     aiTurnStart();
@@ -342,7 +342,7 @@ function playerChoose(stop){
     endRound('player', yakuPts(G.currentYaku)*((G.koiKoi||G.aKoiKoi)?2:1));
   }else{
     G.koiKoi=true;G.phase='wait';
-    G.msg='Кои-Кои! Продолжаем...';draw();
+    G.msg='Мяу-Мяу! Продолжаем...';draw();
     setTimeout(aiTurnStart,700);
   }
 }
@@ -1315,7 +1315,7 @@ function aiDraw(){
         draw();setTimeout(()=>endRound('ai',pts*((G.koiKoi||G.aKoiKoi)?2:1)),1200);return;
       }
       G.aKoiKoi=true;
-      G.msg='🎴 ИИ говорит КОИ-КОИ! ('+pts+' оч.) — продолжает, множитель ×2 активен';
+      G.msg='🐱 ИИ говорит МЯУ-МЯУ! ('+pts+' оч.) — продолжает, множитель ×2 активен';
       draw();
       setTimeout(()=>{
         if(!G.pHand.length&&!G.aHand.length){endRound();return;}
@@ -1455,7 +1455,7 @@ function drawHeader(){
   ct.font='12px Georgia';
   if(G.turn==='player'&&G.phase==='select'){ct.fillStyle='#80d060';ct.textAlign='left';ct.fillText('▶ ваш ход',18,48);}
   else if(G.turn==='ai'){ct.fillStyle='#c06060';ct.textAlign='right';ct.fillText('ИИ думает ▶',W-18,48);}
-  if(G.koiKoi){ct.fillStyle='#c9a227';ct.textAlign='center';ct.fillText('★ Кои-Кои в игре!',W/2+80,48);}
+  if(G.koiKoi){ct.fillStyle='#c9a227';ct.textAlign='center';ct.fillText('★ Мяу-Мяу в игре!',W/2+80,48);}
   // Кнопки сложности
   // 7 кнопок сложности
   const dlabels=['1','2','3','4','5','6','7'];
@@ -1557,7 +1557,7 @@ function drawCapSummary(){
     const R=cap.filter(c=>c.t==='ribbon').length,P=cap.filter(c=>c.t==='plain').length;
     const pts=yakuPts(getYaku(cap));
     ct.fillStyle=col;ct.font='13px Georgia';ct.textAlign=align;ct.textBaseline='middle';
-    ct.fillText(`★${B}  ♦${A}  ▬${R}  ·${P}  =  ${pts} оч.`,x,YCAP+10);
+    ct.fillText(`👑${B}  🧸${A}  🎀${R}  🐾${P}  =  ${pts} оч.`,x,YCAP+10);
   }
   ct.fillStyle='rgba(0,0,0,.3)';ct.fillRect(0,YCAP-2,W,22);
   ct.fillStyle='rgba(255,255,255,.35)';ct.font='bold 13px Georgia';
@@ -1570,17 +1570,17 @@ function drawCapSummary(){
   const cap=G.pCap;
   const has=(m,sub,t)=>cap.some(c=>c.m===m&&(!sub||c.sub===sub)&&(!t||c.t===t));
   const rows=[
-    {label:'Ино-Сика-Тё',items:[
-      {n:'Кабан м.7',ok:has(7,'boar')},{n:'Олень м.10',ok:has(10,'deer')},{n:'Бабочка м.6',ok:has(6,'butterfly')}]},
-    {label:'Ака-тан',items:[
-      {n:'Красн. м.1',ok:has(1,'poetry')},{n:'Красн. м.2',ok:has(2,'poetry')},{n:'Красн. м.3',ok:has(3,'poetry')}]},
-    {label:'Ао-тан',items:[
-      {n:'Синяя м.6',ok:has(6,'blue')},{n:'Синяя м.9',ok:has(9,'blue')},{n:'Синяя м.10',ok:has(10,'blue')}]},
-    {label:'Звёзды ★',items:[
-      {n:'Журавль м.1',ok:has(1,null,'bright')},{n:'Занавес м.3',ok:has(3,null,'bright')},
-      {n:'Луна м.8',ok:has(8,null,'bright')},{n:'Дождь м.11',ok:has(11,null,'bright')},{n:'Феникс м.12',ok:has(12,null,'bright')}]},
-    {label:'Ханами / Цукими',items:[
-      {n:'Занавес м.3',ok:has(3,null,'bright')},{n:'Луна м.8',ok:has(8,null,'bright')},{n:'Саке♦ м.9',ok:has(9,'sake')}]},
+    {label:'3 игрушки',items:[
+      {n:'Мышка м.7',ok:has(7,'boar')},{n:'Рыбка м.10',ok:has(10,'deer')},{n:'Мяч м.6',ok:has(6,'butterfly')}]},
+    {label:'Красн. бантики',items:[
+      {n:'Бант м.1',ok:has(1,'poetry')},{n:'Бант м.2',ok:has(2,'poetry')},{n:'Бант м.3',ok:has(3,'poetry')}]},
+    {label:'Синие бантики',items:[
+      {n:'Бант м.6',ok:has(6,'blue')},{n:'Бант м.9',ok:has(9,'blue')},{n:'Бант м.10',ok:has(10,'blue')}]},
+    {label:'Короны',items:[
+      {n:'Корона м.1',ok:has(1,null,'bright')},{n:'Корона м.3',ok:has(3,null,'bright')},
+      {n:'Корона м.8',ok:has(8,null,'bright')},{n:'Корона м.11',ok:has(11,null,'bright')},{n:'Корона м.12',ok:has(12,null,'bright')}]},
+    {label:'С миской',items:[
+      {n:'Корона м.3',ok:has(3,null,'bright')},{n:'Корона м.8',ok:has(8,null,'bright')},{n:'Миска м.9',ok:has(9,'sake')}]},
   ];
   ct.fillStyle='rgba(0,0,0,.38)';ct.fillRect(4,YPROG-2,W-8,158);
   ct.fillStyle='rgba(201,162,39,.5)';ct.font='bold 10px Georgia';
@@ -1624,7 +1624,7 @@ function drawMsgBar(){
   ct.textAlign='center';ct.textBaseline='middle';
   ct.fillText(G.msg,W/2,YMSG+20);
   ct.fillStyle='#6a5830';ct.font='11px Georgia';
-  ct.fillText('★=20оч  ♦=10оч  ▬=5оч  ·=1оч    |    Яку: Гоко·Сико·Санко·ИСТ·Ханами·Цукими·Ака-тан·Ао-тан',W/2,YMSG+42);
+  ct.fillText('👑=20оч  🧸=10оч  🎀=5оч  🐾=1оч    |    Яку: Короны·Игрушки·Бантики·С миской',W/2,YMSG+42);
 }
 
 function mkbtn(x,y,w,h,label,bg,bc){
@@ -1645,7 +1645,7 @@ function drawChoiceBtns(){
   ct.textAlign='center';ct.textBaseline='top';
   ct.fillText('Выберите:',W/2,YBTN-22);
   mkbtn(14,YBTN,W/2-20,36,'✋  СТОП','#1a4a10','#50b030');
-  mkbtn(W/2+6,YBTN,W/2-20,36,'🎴  КОИ-КОИ','#4a1010','#c04040');
+  mkbtn(W/2+6,YBTN,W/2-20,36,'🐱  МЯУ-МЯУ','#4a1010','#c04040');
 }
 
 function drawRoundOver(){
@@ -1681,18 +1681,18 @@ function drawOverlay(){
     ct.fillStyle='#d4b896';ct.font='11px Georgia';
     ct.textAlign='left';
     const yakuList=[
-      ['Санко','3 звезды ★ (не считая дождя)','5 оч'],
-      ['Сико','4 звезды ★ (без дождя)','8 оч'],
-      ['Амэ-Сико','4 звезды ★ (с дождём)','7 оч'],
-      ['Гоко','все 5 звёзд ★','10 оч'],
-      ['Ино-Сика-Тё','кабан ♦ + олень ♦ + бабочка ♦','5 оч'],
-      ['Ака-тан','3 красные ленты ▬ с иероглифами','5 оч'],
-      ['Ао-тан','3 синие ленты ▬','5 оч'],
-      ['Ханами','занавес ★ + саке ♦','3 оч'],
-      ['Цукими','луна ★ + саке ♦','3 оч'],
-      ['Тане','5+ ♦ (животные)','+1 за каждую сверх 4'],
-      ['Тан','5+ лент (любых)','+1 за каждую сверх 4'],
-      ['Касу','10+ простых карт','+1 за каждую сверх 9'],
+      ['3 короны','3 короны 👑 (без особой)','5 оч'],
+      ['4 короны','4 короны 👑 (без особой)','8 оч'],
+      ['4 короны+','4 короны 👑 (с особой)','7 оч'],
+      ['5 корон','все 5 корон 👑','10 оч'],
+      ['3 игрушки','мяч + рыбка + мышка (опред.)','5 оч'],
+      ['Красные бантики','3 красных бантика 🎀','5 оч'],
+      ['Синие бантики','3 синих бантика 🎀','5 оч'],
+      ['С миской 1','корона 👑 + миска еды','3 оч'],
+      ['С миской 2','другая корона 👑 + миска еды','3 оч'],
+      ['Игрушки','5+ карт-игрушек','+1 за каждую сверх 4'],
+      ['Бантики','5+ бантиков (любых)','+1 за каждую сверх 4'],
+      ['Лапки','10+ карт-лапок','+1 за каждую сверх 9'],
     ];
     const lx=16; // растянуто до левого края canvas
     const rx=W-16; // правый край
@@ -1705,22 +1705,28 @@ function drawOverlay(){
     });
     ct.textAlign='center';
     ct.fillStyle='#70e870';ct.font='bold 12px Georgia';
-    ct.fillText('КОИ-КОИ = ×2 ОЧКОВ ПОБЕДИТЕЛЮ РАУНДА',W/2,H/2-52-6*17+yakuList.length*17+14);
+    ct.fillText('МЯУ-МЯУ = ×2 ОЧКОВ ПОБЕДИТЕЛЮ РАУНДА',W/2,H/2-52-6*17+yakuList.length*17+14);
   }
   ct.fillStyle='#c9a227';ct.font='bold 16px Georgia';ct.textBaseline='bottom';
   if(G.phase==='start'){
     if(TG_USER && !SYNC_DONE){
-      // Пока не пришёл ответ сервера — показываем загрузку, кнопки заблокированы
       ct.fillStyle='rgba(255,255,255,.4)';ct.font='13px Georgia';
-      ct.fillText('Загрузка...',W/2,H-97);
+      ct.fillText('Загрузка...',W/2,H-140);
     }else{
-      ct.fillStyle='#c9a227';ct.font='bold 16px Georgia';
-      ct.fillText('[ НАЧАТЬ НОВУЮ ИГРУ ]',W/2,H-112);
-      if(SAVED_GAME){
-        ct.fillStyle='#70e870';ct.fillText('[ ПРОДОЛЖИТЬ ИГРУ ]',W/2,H-82);
-      }else{
-        ct.fillStyle='rgba(255,255,255,.22)';ct.fillText('[ ПРОДОЛЖИТЬ ИГРУ ]',W/2,H-82);
-      }
+      const bw=220,bh=38,bx=(W-bw)/2;
+      const by1=H-186, by2=H-134; // две кнопки с зазором между ними
+      // Кнопка "Новая игра"
+      ct.strokeStyle='#c9a227';ct.lineWidth=2;
+      ct.beginPath();rr(bx,by1,bw,bh,8);ct.stroke();
+      ct.fillStyle='#c9a227';ct.font='bold 15px Georgia';ct.textBaseline='middle';
+      ct.fillText('НОВАЯ ИГРА',W/2,by1+bh/2);
+      // Кнопка "Продолжить"
+      const contActive=!!SAVED_GAME;
+      ct.strokeStyle=contActive?'#70e870':'rgba(255,255,255,.22)';ct.lineWidth=2;
+      ct.beginPath();rr(bx,by2,bw,bh,8);ct.stroke();
+      ct.fillStyle=contActive?'#70e870':'rgba(255,255,255,.22)';
+      ct.fillText('ПРОДОЛЖИТЬ ИГРУ',W/2,by2+bh/2);
+      ct.textBaseline='bottom';
     }
   }else{
     ct.fillText(G.phase==='gameover'?'[ НАЧАТЬ ЗАНОВО ]':'[ НАЧАТЬ ИГРУ ]',W/2,H-24);
@@ -1744,11 +1750,14 @@ cv.addEventListener('click',e=>{
   if(mx>=W-40&&mx<=W-6&&my>=4&&my<=28){ useHint(); return; }
   if(G.phase==='start'){
     if(TG_USER && !SYNC_DONE){ return; } // ждём ответа сервера — клики игнорируем
-    if(my>=H-94 && my<=H-70){
+    const bw=220,bx=(W-bw)/2,bh=38;
+    const by1=H-186, by2=H-134;
+    if(mx>=bx&&mx<=bx+bw&&my>=by2&&my<=by2+bh){
       if(SAVED_GAME){ G=SAVED_GAME; SAVED_GAME=null; draw(); }
       return; // клик по неактивной кнопке — ничего не делает
     }
-    newGame(); return;
+    if(mx>=bx&&mx<=bx+bw&&my>=by1&&my<=by1+bh){ newGame(); return; }
+    return; // клик мимо обеих кнопок на старте — ничего не делает
   }
   if(G.phase==='gameover'){newGame();return;}
   if(G.phase==='roundover'){G.round++;newRound();return;}
