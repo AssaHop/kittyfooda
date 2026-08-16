@@ -1,18 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160">
-<rect width="120" height="160" rx="10" fill="#e8dcc8"/>
+<rect width="120" height="160" rx="10" fill="#f1c40f"/>
 <rect x="4" y="4" width="112" height="152" rx="7" fill="none" stroke="#ffffff33" stroke-width="2"/>
 
-    <circle cx="60" cy="70" r="34" fill="#ffffffcc" stroke="#00000022" stroke-width="2"/>
-    <polygon points="34,50 42,20 54,42" fill="#ffffffcc" stroke="#00000022" stroke-width="2"/>
-    <polygon points="86,50 78,20 66,42" fill="#ffffffcc" stroke="#00000022" stroke-width="2"/>
+    <circle cx="60" cy="70" r="34" fill="#ffffffee" stroke="#00000022" stroke-width="2"/>
+    <polygon points="34,50 42,20 54,42" fill="#ffffffee" stroke="#00000022" stroke-width="2"/>
+    <polygon points="86,50 78,20 66,42" fill="#ffffffee" stroke="#00000022" stroke-width="2"/>
     <circle cx="48" cy="68" r="4" fill="#222"/>
     <circle cx="72" cy="68" r="4" fill="#222"/>
     <polygon points="60,78 55,84 65,84" fill="#e08a9a"/>
     
-<ellipse cx="60" cy="108" rx="14" ry="11" fill="#ffffffdd"/>
-    <circle cx="44" cy="88" r="6" fill="#ffffffdd"/>
-    <circle cx="55" cy="80" r="6" fill="#ffffffdd"/>
-    <circle cx="66" cy="80" r="6" fill="#ffffffdd"/>
-    <circle cx="77" cy="88" r="6" fill="#ffffffdd"/>
+<ellipse cx="60" cy="108" rx="14" ry="11" fill="#ffffffee"/>
+    <circle cx="44" cy="88" r="6" fill="#ffffffee"/>
+    <circle cx="55" cy="80" r="6" fill="#ffffffee"/>
+    <circle cx="66" cy="80" r="6" fill="#ffffffee"/>
+    <circle cx="77" cy="88" r="6" fill="#ffffffee"/>
 <text x="60" y="148" font-family="Georgia,serif" font-size="11" fill="#ffffffcc" text-anchor="middle">m3 ·</text>
 </svg>
