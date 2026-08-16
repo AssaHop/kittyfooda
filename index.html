@@ -1668,7 +1668,7 @@ function drawOverlay(){
       ct.fillText(`Сыграно: ${PLAYER_STATS.wins+PLAYER_STATS.losses+PLAYER_STATS.draws}   ·   Побед: ${PLAYER_STATS.wins}   ·   Поражений: ${PLAYER_STATS.losses}`,W/2,H/2-64);
     }
     ct.fillStyle='#c9a227';ct.font='bold 13px Georgia';
-    ct.fillText('— комбинации (яку) —',W/2,H/2-72);
+    ct.fillText('— комбинации (яку) —',W/2,H/2-72-6*17);
     ct.fillStyle='#d4b896';ct.font='11px Georgia';
     ct.textAlign='left';
     const yakuList=[
@@ -1685,25 +1685,26 @@ function drawOverlay(){
       ['Тан','5+ лент (любых)','+1 за каждую сверх 4'],
       ['Касу','10+ простых карт','+1 за каждую сверх 9'],
     ];
-    const lx=W/2-150;
+    const lx=16; // растянуто до левого края canvas
+    const rx=W-16; // правый край
     yakuList.forEach((row,i)=>{
-      const y=H/2-52+i*17;
+      const y=H/2-52-6*17+i*17;
       ct.fillStyle='#f0d070';ct.fillText(row[0],lx,y);
-      ct.fillStyle='rgba(212,184,150,.85)';ct.fillText(row[1],lx+80,y);
-      ct.fillStyle='#c9a227';ct.textAlign='right';ct.fillText(row[2],lx+300,y);
+      ct.fillStyle='rgba(212,184,150,.85)';ct.fillText(row[1],lx+90,y);
+      ct.fillStyle='#c9a227';ct.textAlign='right';ct.fillText(row[2],rx,y);
       ct.textAlign='left';
     });
     ct.textAlign='center';
     ct.fillStyle='#70e870';ct.font='bold 12px Georgia';
-    ct.fillText('КОИ-КОИ = ×2 ОЧКОВ ПОБЕДИТЕЛЮ РАУНДА',W/2,H/2-52+yakuList.length*17+14);
+    ct.fillText('КОИ-КОИ = ×2 ОЧКОВ ПОБЕДИТЕЛЮ РАУНДА',W/2,H/2-52-6*17+yakuList.length*17+14);
   }
   ct.fillStyle='#c9a227';ct.font='bold 16px Georgia';ct.textBaseline='bottom';
   if(G.phase==='start'){
-    ct.fillStyle='#c9a227';ct.fillText('[ НАЧАТЬ НОВУЮ ИГРУ ]',W/2,H-52);
+    ct.fillStyle='#c9a227';ct.fillText('[ НАЧАТЬ НОВУЮ ИГРУ ]',W/2,H-112);
     if(SAVED_GAME){
-      ct.fillStyle='#70e870';ct.fillText('[ ПРОДОЛЖИТЬ ИГРУ ]',W/2,H-22);
+      ct.fillStyle='#70e870';ct.fillText('[ ПРОДОЛЖИТЬ ИГРУ ]',W/2,H-82);
     }else{
-      ct.fillStyle='rgba(255,255,255,.22)';ct.fillText('[ ПРОДОЛЖИТЬ ИГРУ ]',W/2,H-22);
+      ct.fillStyle='rgba(255,255,255,.22)';ct.fillText('[ ПРОДОЛЖИТЬ ИГРУ ]',W/2,H-82);
     }
   }else{
     ct.fillText(G.phase==='gameover'?'[ НАЧАТЬ ЗАНОВО ]':'[ НАЧАТЬ ИГРУ ]',W/2,H-24);
@@ -1726,7 +1727,7 @@ cv.addEventListener('click',e=>{
   // Кнопка подсказки
   if(mx>=W-40&&mx<=W-6&&my>=4&&my<=28){ useHint(); return; }
   if(G.phase==='start'){
-    if(my>=H-34 && my<=H-10){
+    if(my>=H-94 && my<=H-70){
       if(SAVED_GAME){ G=SAVED_GAME; SAVED_GAME=null; draw(); }
       return; // клик по неактивной кнопке — ничего не делает
     }
