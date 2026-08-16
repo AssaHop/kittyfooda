@@ -1,5 +1,5 @@
 // api/save-progress.js
-// Сохраняет/читает прогресс игрока в Supabase (баланс, статистика побед).
+// Сохраняет/читает прогресс игрока + полное состояние текущей партии.
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -9,7 +9,6 @@ export default async function handler(req, res) {
 
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
-
   if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
     return res.status(500).json({ error: 'Server misconfigured: missing Supabase env vars' });
   }
@@ -34,10 +33,17 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { telegram_id, username, result } = req.body;
+      const { telegram_id, username, result, game_state } = req.body;
       if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' });
 
       let patch = { telegram_id, username };
+
+      // Автосохранение состояния партии (может прийти без result — просто снапшот хода)
+      if (game_state !== undefined) {
+        patch.game_state = game_state; // null явно чистит сохранение (партия завершена/начата заново)
+      }
+
+      // Итог матча — обновляем накопительную статистику и чистим game_state
       if (result === 'win' || result === 'lose' || result === 'draw') {
         const cur = await fetch(
           `${SUPABASE_URL}/rest/v1/users?telegram_id=eq.${telegram_id}&select=wins,losses,draws`,
@@ -48,6 +54,7 @@ export default async function handler(req, res) {
         patch.wins = (row.wins || 0) + (result === 'win' ? 1 : 0);
         patch.losses = (row.losses || 0) + (result === 'lose' ? 1 : 0);
         patch.draws = (row.draws || 0) + (result === 'draw' ? 1 : 0);
+        patch.game_state = null;
       }
 
       const r = await fetch(`${SUPABASE_URL}/rest/v1/users`, {
