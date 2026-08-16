@@ -55,19 +55,30 @@ if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataU
   TG_USER = window.Telegram.WebApp.initDataUnsafe.user || null;
 }
 
+let PLAYER_STATS={wins:0,losses:0,draws:0}; // накопительная статистика, подгружается из базы
+
 async function syncUser(){
   if(!TG_USER) return null; // не в Telegram — работаем без сохранения
   try{
-    const r = await fetch(`${API_BASE}/api/save-progress`, {
+    // 1) регистрируем/обновляем юзернейм
+    await fetch(`${API_BASE}/api/save-progress`, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         telegram_id: TG_USER.id,
-        username: TG_USER.username || TG_USER.first_name || '',
-        stars_balance: 0
+        username: TG_USER.username || TG_USER.first_name || ''
       })
     });
+    // 2) подгружаем накопленную статистику
+    const r = await fetch(`${API_BASE}/api/save-progress?telegram_id=${TG_USER.id}`);
     const data = await r.json();
+    if(data.user){
+      PLAYER_STATS.wins=data.user.wins||0;
+      PLAYER_STATS.losses=data.user.losses||0;
+      PLAYER_STATS.draws=data.user.draws||0;
+      hintsOwnedSync();
+    }
+    draw();
     return data.user || null;
   }catch(e){ console.warn('syncUser failed', e); return null; }
 }
@@ -75,17 +86,22 @@ async function syncUser(){
 async function saveMatchResult(result, playerScore, aiScore){
   if(!TG_USER) return;
   try{
+    if(result==='win') PLAYER_STATS.wins++;
+    else if(result==='lose') PLAYER_STATS.losses++;
+    else PLAYER_STATS.draws++;
+    draw();
     await fetch(`${API_BASE}/api/save-progress`, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         telegram_id: TG_USER.id,
         username: TG_USER.username || TG_USER.first_name || '',
-        stars_balance: 0
+        result
       })
     });
   }catch(e){ console.warn('saveMatchResult failed', e); }
 }
+function hintsOwnedSync(){} // заглушка на будущее (синхронизация купленных бустеров)
 
 // Регистрируем/обновляем пользователя сразу при открытии игры
 syncUser();
@@ -1626,6 +1642,10 @@ function drawOverlay(){
   }else{
     ct.fillStyle='#c9a227';ct.font='bold 26px Georgia';ct.textBaseline='middle';
     ct.fillText('ハ  ХАНАФУДА  КОИ-КОИ  ハ',W/2,H/2-130);
+    if(TG_USER){
+      ct.fillStyle='rgba(255,255,255,.55)';ct.font='12px Georgia';
+      ct.fillText(`Всего сыграно: ${PLAYER_STATS.wins+PLAYER_STATS.losses+PLAYER_STATS.draws}   ·   Побед: ${PLAYER_STATS.wins}   ·   Поражений: ${PLAYER_STATS.losses}`,W/2,H/2-104);
+    }
     ct.fillStyle='#d4b896';ct.font='15px Georgia';
     [
       '48 карт · 12 месяцев · 6 раундов',
