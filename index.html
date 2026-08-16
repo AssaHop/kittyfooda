@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Ханафуда</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
@@ -21,16 +21,16 @@ body{
 h1{font-size:clamp(16px,4vw,24px);letter-spacing:6px;
    color:#c9a227;text-shadow:0 0 20px rgba(201,162,39,.5);}
 canvas{display:block;cursor:pointer;
-       border:3px solid #7a5010;border-radius:8px;
+       border-radius:8px;
        box-shadow:0 0 50px rgba(0,0,0,.8);
-       max-width:96vw;height:auto;}
+       max-width:98vw;height:auto;
+       touch-action:manipulation;
+       -webkit-user-select:none;user-select:none;}
 footer{color:#5a4a28;font-size:11px;text-align:center;max-width:900px;line-height:1.7;}
 </style>
 </head>
 <body>
-<h1>ハ  ХАНАФУДА  КОИ-КОИ  ハ</h1>
 <canvas id="c"></canvas>
-<footer>★ 20 · ♦ 10 · ▬ 5 · · 1  |  Совпал месяц = захват  |  Стоп или Кои-Кои (×2)</footer>
 <script>
 // ── Telegram Mini App: разворачиваем на весь экран, убираем "съезжание" ──
 if(window.Telegram && window.Telegram.WebApp){
@@ -77,14 +77,14 @@ async function syncUser(){
       PLAYER_STATS.losses=data.user.losses||0;
       PLAYER_STATS.draws=data.user.draws||0;
       if(data.user.game_state){
-        G=data.user.game_state;
-        RESUMED=true;
+        SAVED_GAME=data.user.game_state;
       }
       hintsOwnedSync();
     }
+    SYNC_DONE=true;
     draw();
     return data.user || null;
-  }catch(e){ console.warn('syncUser failed', e); return null; }
+  }catch(e){ console.warn('syncUser failed', e); SYNC_DONE=true; return null; }
 }
 
 async function saveMatchResult(result, playerScore, aiScore){
@@ -248,11 +248,13 @@ function yakuPts(y){return y.reduce((s,x)=>s+x.p,0);}
 // ── Состояние ────────────────────────────────────────────────────
 let G={phase:'start'};
 let RESUMED=false; // true если состояние восстановлено из базы
+let SAVED_GAME=null; // сохранённая партия с сервера, ждёт подтверждения "Продолжить"
+let SYNC_DONE=false; // true после того как начальная загрузка из базы завершена — до этого НЕ сохраняем, чтобы не затереть старую партию
 
 // ── Автосохранение состояния партии ──────────────────────────────
 let saveStateTimer=null;
 function persistState(){
-  if(!TG_USER) return;
+  if(!TG_USER||!SYNC_DONE) return;
   clearTimeout(saveStateTimer);
   saveStateTimer=setTimeout(()=>{
     const snap=(G.phase==='select'||G.phase==='wait'||G.phase==='choose'||G.phase==='roundover')?G:null;
@@ -1565,7 +1567,7 @@ function drawCapSummary(){
       {n:'Красн. м.1',ok:has(1,'poetry')},{n:'Красн. м.2',ok:has(2,'poetry')},{n:'Красн. м.3',ok:has(3,'poetry')}]},
     {label:'Ао-тан',items:[
       {n:'Синяя м.6',ok:has(6,'blue')},{n:'Синяя м.9',ok:has(9,'blue')},{n:'Синяя м.10',ok:has(10,'blue')}]},
-    {label:'Яркие ★',items:[
+    {label:'Звёзды ★',items:[
       {n:'Журавль м.1',ok:has(1,null,'bright')},{n:'Занавес м.3',ok:has(3,null,'bright')},
       {n:'Луна м.8',ok:has(8,null,'bright')},{n:'Дождь м.11',ok:has(11,null,'bright')},{n:'Феникс м.12',ok:has(12,null,'bright')}]},
     {label:'Ханами / Цукими',items:[
@@ -1661,29 +1663,51 @@ function drawOverlay(){
     ct.fillStyle='#c9a227';ct.font='22px Georgia';
     ct.fillText(`${G.scores[0]}  :  ${G.scores[1]}`,W/2,H/2-14);
   }else{
-    ct.fillStyle='#c9a227';ct.font='bold 26px Georgia';ct.textBaseline='middle';
-    ct.fillText('ハ  ХАНАФУДА  КОИ-КОИ  ハ',W/2,H/2-130);
     if(TG_USER){
-      ct.fillStyle='rgba(255,255,255,.55)';ct.font='12px Georgia';
-      ct.fillText(`Всего сыграно: ${PLAYER_STATS.wins+PLAYER_STATS.losses+PLAYER_STATS.draws}   ·   Побед: ${PLAYER_STATS.wins}   ·   Поражений: ${PLAYER_STATS.losses}`,W/2,H/2-104);
+      ct.fillStyle='rgba(255,255,255,.55)';ct.font='13px Georgia';
+      ct.fillText(`Сыграно: ${PLAYER_STATS.wins+PLAYER_STATS.losses+PLAYER_STATS.draws}   ·   Побед: ${PLAYER_STATS.wins}   ·   Поражений: ${PLAYER_STATS.losses}`,W/2,H/2-64);
     }
-    ct.fillStyle='#d4b896';ct.font='15px Georgia';
-    [
-      '48 карт · 12 месяцев · 6 раундов',
-      '',
-      '★  Яркая   (光)  =  20 оч     ♦  Животное  (鳥)  =  10 оч',
-      '▬  Лента   (短)  =   5 оч     ·  Простая   (草)  =   1 оч',
-      '',
-      'Ваш ход:  нажмите карту из руки → выбрана → нажмите снова → ход',
-      'Совпал месяц с картой на столе — захват обеих карт',
-      'Затем вытягивается карта из колоды — то же правило',
-      '',
-      '★  Собрали комбинацию (яку) →  СТОП  (берёте очки)',
-      '   или  КОИ-КОИ  (продолжаете, но если проиграете — соперник ×2)',
-    ].forEach((l,i)=>ct.fillText(l,W/2,H/2-72+i*24));
+    ct.fillStyle='#c9a227';ct.font='bold 13px Georgia';
+    ct.fillText('— комбинации (яку) —',W/2,H/2-72);
+    ct.fillStyle='#d4b896';ct.font='11px Georgia';
+    ct.textAlign='left';
+    const yakuList=[
+      ['Санко','3 звезды ★ (не считая дождя)','5 оч'],
+      ['Сико','4 звезды ★ (без дождя)','8 оч'],
+      ['Амэ-Сико','4 звезды ★ (с дождём)','7 оч'],
+      ['Гоко','все 5 звёзд ★','10 оч'],
+      ['Ино-Сика-Тё','кабан ♦ + олень ♦ + бабочка ♦','5 оч'],
+      ['Ака-тан','3 красные ленты ▬ с иероглифами','5 оч'],
+      ['Ао-тан','3 синие ленты ▬','5 оч'],
+      ['Ханами','занавес ★ + саке ♦','3 оч'],
+      ['Цукими','луна ★ + саке ♦','3 оч'],
+      ['Тане','5+ ♦ (животные)','+1 за каждую сверх 4'],
+      ['Тан','5+ лент (любых)','+1 за каждую сверх 4'],
+      ['Касу','10+ простых карт','+1 за каждую сверх 9'],
+    ];
+    const lx=W/2-150;
+    yakuList.forEach((row,i)=>{
+      const y=H/2-52+i*17;
+      ct.fillStyle='#f0d070';ct.fillText(row[0],lx,y);
+      ct.fillStyle='rgba(212,184,150,.85)';ct.fillText(row[1],lx+80,y);
+      ct.fillStyle='#c9a227';ct.textAlign='right';ct.fillText(row[2],lx+300,y);
+      ct.textAlign='left';
+    });
+    ct.textAlign='center';
+    ct.fillStyle='#70e870';ct.font='bold 12px Georgia';
+    ct.fillText('КОИ-КОИ = ×2 ОЧКОВ ПОБЕДИТЕЛЮ РАУНДА',W/2,H/2-52+yakuList.length*17+14);
   }
   ct.fillStyle='#c9a227';ct.font='bold 16px Georgia';ct.textBaseline='bottom';
-  ct.fillText(G.phase==='gameover'?'[ нажмите — сыграть снова ]':'[ нажмите — начать игру ]',W/2,H-24);
+  if(G.phase==='start'){
+    ct.fillStyle='#c9a227';ct.fillText('[ НАЧАТЬ НОВУЮ ИГРУ ]',W/2,H-52);
+    if(SAVED_GAME){
+      ct.fillStyle='#70e870';ct.fillText('[ ПРОДОЛЖИТЬ ИГРУ ]',W/2,H-22);
+    }else{
+      ct.fillStyle='rgba(255,255,255,.22)';ct.fillText('[ ПРОДОЛЖИТЬ ИГРУ ]',W/2,H-22);
+    }
+  }else{
+    ct.fillText(G.phase==='gameover'?'[ НАЧАТЬ ЗАНОВО ]':'[ НАЧАТЬ ИГРУ ]',W/2,H-24);
+  }
 }
 
 // ── События ───────────────────────────────────────────────────────
@@ -1702,7 +1726,10 @@ cv.addEventListener('click',e=>{
   // Кнопка подсказки
   if(mx>=W-40&&mx<=W-6&&my>=4&&my<=28){ useHint(); return; }
   if(G.phase==='start'){
-    if(RESUMED){ RESUMED=false; draw(); return; } // просто продолжаем сохранённую партию
+    if(my>=H-34 && my<=H-10){
+      if(SAVED_GAME){ G=SAVED_GAME; SAVED_GAME=null; draw(); }
+      return; // клик по неактивной кнопке — ничего не делает
+    }
     newGame(); return;
   }
   if(G.phase==='gameover'){newGame();return;}
