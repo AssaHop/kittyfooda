@@ -57,7 +57,7 @@ export default async function handler(req, res) {
         patch.game_state = null;
       }
 
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/users`, {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/users?on_conflict=telegram_id`, {
         method: 'POST',
         headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=representation' },
         body: JSON.stringify([patch]),
