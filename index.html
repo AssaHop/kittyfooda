@@ -210,6 +210,14 @@ function buildDeck(){
     {m:12,t:'bright'},{m:12,t:'plain'},{m:12,t:'plain'},{m:12,t:'plain'},
   ];
   d.forEach((c,i)=>c.id=i);
+  // Проставляем стабильный номер картинки для plain-карт (1,2,3 в рамках месяца)
+  const plainCount={};
+  d.forEach(c=>{
+    if(c.t==='plain'){
+      plainCount[c.m]=(plainCount[c.m]||0)+1;
+      c.plainIdx=plainCount[c.m];
+    }
+  });
   return d;
 }
 let DIFF=3; // 1-7 уровней сложности
@@ -1370,6 +1378,30 @@ function draw(){
 }
 
 // Карта
+// ── Загрузка спрайтов карт (котики) ──────────────────────────────
+const CARD_IMG_BASE = 'cards/';
+const cardImgCache = {};
+let plainCounters = {}; // для нумерации plain1/plain2/plain3 по каждому месяцу при построении колоды
+
+function cardImgName(card){
+  if(card.t==='bright') return `m${card.m}_bright`;
+  if(card.t==='animal') return `m${card.m}_animal`;
+  if(card.t==='ribbon') return `m${card.m}_ribbon`;
+  // plain — нужен стабильный номер (1/2/3) для конкретной карты месяца
+  return `m${card.m}_plain${card.plainIdx||1}`;
+}
+function getCardImg(card){
+  const name=cardImgName(card);
+  if(!cardImgCache[name]){
+    const img=new Image();
+    img.src=CARD_IMG_BASE+name+'.svg';
+    img.onload=()=>draw();
+    cardImgCache[name]={img,loaded:false};
+    img.onload=()=>{cardImgCache[name].loaded=true;draw();};
+  }
+  return cardImgCache[name];
+}
+
 function drawCard(x,y,card,face=true,sel=false){
   ct.save();
   if(sel){ct.shadowColor='rgba(255,240,80,.95)';ct.shadowBlur=20;}
@@ -1383,39 +1415,16 @@ function drawCard(x,y,card,face=true,sel=false){
     }
     ct.restore();return;
   }
-  const m=MON[card.m-1];
-  const g=ct.createLinearGradient(x,y,x,y+CH);
-  g.addColorStop(0,lighten(m.c,30));g.addColorStop(1,m.c);
-  ct.fillStyle=g;ct.fillRect(x,y,CW,CH);
-  ct.strokeStyle='rgba(0,0,0,.6)';ct.lineWidth=2;ct.strokeRect(x,y,CW,CH);
-  ct.strokeStyle='rgba(255,255,255,.18)';ct.lineWidth=1;ct.strokeRect(x+3,y+3,CW-6,CH-6);
-
-  // Месяц (верх лево)
-  ct.fillStyle='rgba(255,255,255,.92)';ct.font='bold 11px Georgia';
-  ct.textAlign='left';ct.textBaseline='top';
-  ct.fillText(card.m+'月',x+5,y+5);
-
-  // Символ типа (центр)
-  const[sym,col]=tsc(card);
-  ct.fillStyle=col;ct.font='26px serif';
-  ct.textAlign='center';ct.textBaseline='middle';
-  ct.fillText(sym,x+CW/2,y+CH/2);
-
-  // Сабтип (под символом)
-  if(card.sub){
-    const sl={crane:'журав.',curtain:'занав.',moon:'луна',rain:'дождь',
-              sake:'саке',boar:'кабан',deer:'олень',butterfly:'бабочка',
-              poetry:'красн.',blue:'синяя'}[card.sub]||'';
-    ct.fillStyle='rgba(255,255,255,.75)';ct.font='8px Georgia';
-    ct.textAlign='center';ct.textBaseline='top';
-    ct.fillText(sl,x+CW/2,y+CH/2+15);
+  const entry=getCardImg(card);
+  if(entry.loaded){
+    ct.drawImage(entry.img,x,y,CW,CH);
+    ct.strokeStyle='rgba(0,0,0,.5)';ct.lineWidth=1.5;ct.strokeRect(x,y,CW,CH);
+  }else{
+    // Пока картинка грузится — временная заглушка на основе старого стиля
+    const m=MON[card.m-1];
+    ct.fillStyle=m.c;ct.fillRect(x,y,CW,CH);
+    ct.strokeStyle='rgba(0,0,0,.6)';ct.lineWidth=2;ct.strokeRect(x,y,CW,CH);
   }
-
-  // Название месяца (низ)
-  ct.fillStyle='rgba(255,255,255,.55)';ct.font='9px Georgia';
-  ct.textAlign='center';ct.textBaseline='bottom';
-  ct.fillText(m.n,x+CW/2,y+CH-3);
-
   ct.restore();
 }
 
@@ -1700,11 +1709,18 @@ function drawOverlay(){
   }
   ct.fillStyle='#c9a227';ct.font='bold 16px Georgia';ct.textBaseline='bottom';
   if(G.phase==='start'){
-    ct.fillStyle='#c9a227';ct.fillText('[ НАЧАТЬ НОВУЮ ИГРУ ]',W/2,H-112);
-    if(SAVED_GAME){
-      ct.fillStyle='#70e870';ct.fillText('[ ПРОДОЛЖИТЬ ИГРУ ]',W/2,H-82);
+    if(TG_USER && !SYNC_DONE){
+      // Пока не пришёл ответ сервера — показываем загрузку, кнопки заблокированы
+      ct.fillStyle='rgba(255,255,255,.4)';ct.font='13px Georgia';
+      ct.fillText('Загрузка...',W/2,H-97);
     }else{
-      ct.fillStyle='rgba(255,255,255,.22)';ct.fillText('[ ПРОДОЛЖИТЬ ИГРУ ]',W/2,H-82);
+      ct.fillStyle='#c9a227';ct.font='bold 16px Georgia';
+      ct.fillText('[ НАЧАТЬ НОВУЮ ИГРУ ]',W/2,H-112);
+      if(SAVED_GAME){
+        ct.fillStyle='#70e870';ct.fillText('[ ПРОДОЛЖИТЬ ИГРУ ]',W/2,H-82);
+      }else{
+        ct.fillStyle='rgba(255,255,255,.22)';ct.fillText('[ ПРОДОЛЖИТЬ ИГРУ ]',W/2,H-82);
+      }
     }
   }else{
     ct.fillText(G.phase==='gameover'?'[ НАЧАТЬ ЗАНОВО ]':'[ НАЧАТЬ ИГРУ ]',W/2,H-24);
@@ -1727,6 +1743,7 @@ cv.addEventListener('click',e=>{
   // Кнопка подсказки
   if(mx>=W-40&&mx<=W-6&&my>=4&&my<=28){ useHint(); return; }
   if(G.phase==='start'){
+    if(TG_USER && !SYNC_DONE){ return; } // ждём ответа сервера — клики игнорируем
     if(my>=H-94 && my<=H-70){
       if(SAVED_GAME){ G=SAVED_GAME; SAVED_GAME=null; draw(); }
       return; // клик по неактивной кнопке — ничего не делает
