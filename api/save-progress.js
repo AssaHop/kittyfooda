@@ -1,9 +1,7 @@
 // api/save-progress.js
-// Сохраняет/читает прогресс игрока в Supabase.
-// Вызывается из игры через fetch('/api/save-progress', {...})
+// Сохраняет/читает прогресс игрока в Supabase (баланс, статистика побед).
 
 export default async function handler(req, res) {
-  // CORS — разрешаем запросы из Telegram WebView
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -36,13 +34,26 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { telegram_id, username, stars_balance } = req.body;
+      const { telegram_id, username, result } = req.body;
       if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' });
+
+      let patch = { telegram_id, username };
+      if (result === 'win' || result === 'lose' || result === 'draw') {
+        const cur = await fetch(
+          `${SUPABASE_URL}/rest/v1/users?telegram_id=eq.${telegram_id}&select=wins,losses,draws`,
+          { headers }
+        );
+        const curData = await cur.json();
+        const row = curData[0] || { wins: 0, losses: 0, draws: 0 };
+        patch.wins = (row.wins || 0) + (result === 'win' ? 1 : 0);
+        patch.losses = (row.losses || 0) + (result === 'lose' ? 1 : 0);
+        patch.draws = (row.draws || 0) + (result === 'draw' ? 1 : 0);
+      }
 
       const r = await fetch(`${SUPABASE_URL}/rest/v1/users`, {
         method: 'POST',
         headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=representation' },
-        body: JSON.stringify([{ telegram_id, username, stars_balance }]),
+        body: JSON.stringify([patch]),
       });
 
       if (!r.ok) {
