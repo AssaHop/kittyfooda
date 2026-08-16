@@ -69,13 +69,17 @@ async function syncUser(){
         username: TG_USER.username || TG_USER.first_name || ''
       })
     });
-    // 2) подгружаем накопленную статистику
+    // 2) подгружаем накопленную статистику и сохранённую партию
     const r = await fetch(`${API_BASE}/api/save-progress?telegram_id=${TG_USER.id}`);
     const data = await r.json();
     if(data.user){
       PLAYER_STATS.wins=data.user.wins||0;
       PLAYER_STATS.losses=data.user.losses||0;
       PLAYER_STATS.draws=data.user.draws||0;
+      if(data.user.game_state){
+        G=data.user.game_state;
+        RESUMED=true;
+      }
       hintsOwnedSync();
     }
     draw();
@@ -243,6 +247,21 @@ function yakuPts(y){return y.reduce((s,x)=>s+x.p,0);}
 
 // ── Состояние ────────────────────────────────────────────────────
 let G={phase:'start'};
+let RESUMED=false; // true если состояние восстановлено из базы
+
+// ── Автосохранение состояния партии ──────────────────────────────
+let saveStateTimer=null;
+function persistState(){
+  if(!TG_USER) return;
+  clearTimeout(saveStateTimer);
+  saveStateTimer=setTimeout(()=>{
+    const snap=(G.phase==='select'||G.phase==='wait'||G.phase==='choose'||G.phase==='roundover')?G:null;
+    fetch(`${API_BASE}/api/save-progress`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({telegram_id:TG_USER.id,game_state:snap})
+    }).catch(e=>console.warn('persistState failed',e));
+  },800); // debounce, чтобы не слать запрос на каждый чих
+}
 
 function newGame(){
   G={phase:'start',round:1,rounds:6,scores:[0,0]};
@@ -267,6 +286,7 @@ function newRound(){
     aiHL:-1,aiTargets:[],aiPreview:null,aiCard:null,
     msg:'Выберите карту из руки, затем нажмите снова для хода'};
   draw();
+  persistState();
 }
 
 // ── Логика хода ──────────────────────────────────────────────────
@@ -1344,6 +1364,7 @@ function draw(){
   drawMsgBar();
   if(G.phase==='choose')    drawChoiceBtns();
   if(G.phase==='roundover') drawRoundOver();
+  persistState();
 }
 
 // Карта
@@ -1680,7 +1701,11 @@ cv.addEventListener('click',e=>{
   }
   // Кнопка подсказки
   if(mx>=W-40&&mx<=W-6&&my>=4&&my<=28){ useHint(); return; }
-  if(G.phase==='start'||G.phase==='gameover'){newGame();return;}
+  if(G.phase==='start'){
+    if(RESUMED){ RESUMED=false; draw(); return; } // просто продолжаем сохранённую партию
+    newGame(); return;
+  }
+  if(G.phase==='gameover'){newGame();return;}
   if(G.phase==='roundover'){G.round++;newRound();return;}
 
   if(G.phase==='choose'){
