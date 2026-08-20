@@ -51,8 +51,28 @@ if(window.Telegram && window.Telegram.WebApp){
 // ── Сохранение прогресса через бэкенд (Vercel + Supabase) ────────
 const API_BASE = 'https://kittyfooda.vercel.app';
 let TG_USER = null;
-if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe){
-  TG_USER = window.Telegram.WebApp.initDataUnsafe.user || null;
+let TG_INIT_DATA = '';
+let SESSION_EXPIRED = false;
+if(window.Telegram && window.Telegram.WebApp){
+  TG_INIT_DATA = window.Telegram.WebApp.initData || '';
+  TG_USER = (window.Telegram.WebApp.initDataUnsafe || {}).user || null;
+}
+
+// Единая точка запросов к бэкенду: подпись Telegram уходит в заголовке,
+// работает и для GET, и для POST. telegram_id сервер берёт из подписи.
+async function apiFetch(path, options = {}){
+  const headers = Object.assign(
+    {'Content-Type':'application/json'},
+    options.headers || {},
+    TG_INIT_DATA ? {'X-Telegram-Init-Data': TG_INIT_DATA} : {}
+  );
+  const r = await fetch(`${API_BASE}${path}`, Object.assign({}, options, {headers}));
+  if(r.status === 401){
+    SESSION_EXPIRED = true;
+    G.msg = 'Сессия устарела — переоткройте игру';
+    draw();
+  }
+  return r;
 }
 
 let PLAYER_STATS={wins:0,losses:0,draws:0}; // накопительная статистика, подгружается из базы
@@ -61,16 +81,9 @@ async function syncUser(){
   if(!TG_USER) return null; // не в Telegram — работаем без сохранения
   try{
     // 1) регистрируем/обновляем юзернейм
-    await fetch(`${API_BASE}/api/save-progress`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        telegram_id: TG_USER.id,
-        username: TG_USER.username || TG_USER.first_name || ''
-      })
-    });
+    await apiFetch('/api/save-progress', { method:'POST', body: JSON.stringify({}) });
     // 2) подгружаем накопленную статистику и сохранённую партию
-    const r = await fetch(`${API_BASE}/api/save-progress?telegram_id=${TG_USER.id}`);
+    const r = await apiFetch('/api/save-progress');
     const data = await r.json();
     if(data.user){
       PLAYER_STATS.wins=data.user.wins||0;
@@ -88,20 +101,15 @@ async function syncUser(){
 }
 
 async function saveMatchResult(result, playerScore, aiScore){
-  if(!TG_USER) return;
+  if(!TG_USER||SESSION_EXPIRED) return;
   try{
     if(result==='win') PLAYER_STATS.wins++;
     else if(result==='lose') PLAYER_STATS.losses++;
     else PLAYER_STATS.draws++;
     draw();
-    await fetch(`${API_BASE}/api/save-progress`, {
+    await apiFetch('/api/save-progress', {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        telegram_id: TG_USER.id,
-        username: TG_USER.username || TG_USER.first_name || '',
-        result
-      })
+      body: JSON.stringify({ result })
     });
   }catch(e){ console.warn('saveMatchResult failed', e); }
 }
@@ -118,15 +126,9 @@ let hintActive = null; // индекс подсвеченной карты-по�
 async function buyHint(){
   if(!TG_USER){ G.msg='Подсказки доступны только в Telegram'; draw(); return; }
   try{
-    const r = await fetch(`${API_BASE}/api/create-invoice`, {
+    const r = await apiFetch('/api/create-invoice', {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        item:'hint',
-        amount_stars: HINT_PRICE,
-        title:'Подсказка',
-        description:'Показывает лучший ход в текущей ситуации'
-      })
+      body: JSON.stringify({ item:'hint' })
     });
     const data = await r.json();
     if(!data.invoice_link){ G.msg='Не удалось создать счёт'; draw(); return; }
@@ -278,13 +280,15 @@ let SYNC_DONE=false;
 
 let saveStateTimer=null;
 function persistState(){
-  if(!TG_USER||!SYNC_DONE) return;
+  if(!TG_USER||!SYNC_DONE||SESSION_EXPIRED) return;
   clearTimeout(saveStateTimer);
   saveStateTimer=setTimeout(()=>{
-    const snap=['select','wait','choose','captureSelect','roundover'].includes(G.phase)?G:null;
-    fetch(`${API_BASE}/api/save-progress`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({telegram_id:TG_USER.id,game_state:snap})
+    // Фаза 'wait' не сохраняется: в ней нет обработчика клика,
+    // восстановленная игра в этом состоянии зависла бы.
+    const snap=['select','choose','captureSelect','roundover'].includes(G.phase)?G:null;
+    apiFetch('/api/save-progress',{
+      method:'POST',
+      body:JSON.stringify({game_state:snap})
     }).catch(e=>console.warn('persistState failed',e));
   },800);
 }
@@ -1110,7 +1114,15 @@ cv.addEventListener('click',e=>{
     const bw=220,bx=(W-bw)/2,bh=38;
     const by1=H-186, by2=H-134;
     if(mx>=bx&&mx<=bx+bw&&my>=by2&&my<=by2+bh){
-      if(SAVED_GAME){ G=SAVED_GAME; SAVED_GAME=null; draw(); }
+      if(SAVED_GAME){
+        G=SAVED_GAME; SAVED_GAME=null;
+        // Страховка на случай снапшота, сохранённого старой версией в фазе 'wait'
+        if(G.phase==='wait'){
+          G.phase='select'; G.turn='player';
+          G.msg='Ваш ход — выберите карту из руки';
+        }
+        draw();
+      }
       return; // клик по неактивной кнопке — ничего не делает
     }
     if(mx>=bx&&mx<=bx+bw&&my>=by1&&my<=by1+bh){ newGame(); return; }
