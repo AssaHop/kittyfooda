@@ -1,41 +1,51 @@
 // api/create-invoice.js
 // Создаёт ссылку на оплату через Telegram Stars.
-// Вызывается из игры: POST { telegram_id, item, amount_stars }
+// Цены заданы на сервере — клиент не может назначить свою.
+
+import { verifyInitData, extractInitData, applyCors } from './_verify.js';
+
+// Каталог: единственный источник правды по ценам
+const CATALOG = {
+  hint: { stars: 15, title: 'Подсказка', description: 'Показывает лучший ход в текущей ситуации' },
+};
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  applyCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const BOT_TOKEN = process.env.BOT_TOKEN;
   if (!BOT_TOKEN) return res.status(500).json({ error: 'Server misconfigured: missing BOT_TOKEN' });
 
-  const { item, amount_stars, title, description } = req.body || {};
-  if (!item || !amount_stars) {
-    return res.status(400).json({ error: 'item and amount_stars are required' });
-  }
+  const auth = verifyInitData(extractInitData(req), BOT_TOKEN);
+  if (!auth.ok) return res.status(401).json({ error: 'Unauthorized', reason: auth.error });
+
+  const { item } = req.body || {};
+  const product = CATALOG[item];
+  if (!product) return res.status(400).json({ error: 'Unknown item' });
 
   try {
     const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/createInvoiceLink`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        title: title || 'Покупка в KittyFooda',
-        description: description || item,
-        payload: item, // это вернётся нам в webhook, чтобы знать что купили
+        title: product.title,
+        description: product.description,
+        // Payload вернётся в webhook. Кладём и id покупателя — для сверки с msg.from.id.
+        payload: `${item}:${auth.telegramId}`,
         currency: 'XTR', // Telegram Stars
-        prices: [{ label: title || item, amount: amount_stars }], // для XTR amount = кол-во звёзд
+        prices: [{ label: product.title, amount: product.stars }],
       }),
     });
 
     const data = await r.json();
     if (!data.ok) {
-      return res.status(500).json({ error: 'Telegram API error', details: data });
+      console.error('Telegram API error', data);
+      return res.status(500).json({ error: 'Telegram API error' });
     }
     return res.status(200).json({ invoice_link: data.result });
   } catch (e) {
-    return res.status(500).json({ error: 'Unexpected error', details: String(e) });
+    console.error('create-invoice error', e);
+    return res.status(500).json({ error: 'Unexpected error' });
   }
 }
