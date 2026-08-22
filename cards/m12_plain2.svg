@@ -1,14 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160">
-<rect width="120" height="160" rx="10" fill="#B15928"/>
-<rect x="3" y="3" width="114" height="154" rx="8" fill="none" stroke="#1a1a1a" stroke-width="4"/>
-
-    <circle cx="60" cy="70" r="34" fill="#ffffffee" stroke="#00000033" stroke-width="2"/>
-    <polygon points="34,50 42,20 54,42" fill="#8f3909" stroke="#00000033" stroke-width="2"/>
-    <polygon points="86,50 78,20 66,42" fill="#8f3909" stroke="#00000033" stroke-width="2"/>
-    <ellipse cx="38" cy="62" rx="10" ry="14" fill="#8f3909" opacity="0.85"/>
-    <circle cx="48" cy="68" r="4" fill="#222"/>
-    <circle cx="72" cy="68" r="4" fill="#222"/>
-    <polygon points="60,86 55,79 65,79" fill="#e08a9a"/>
-    
-<text x="60" y="148" font-family="Georgia,serif" font-size="11" fill="#000000aa" text-anchor="middle">m12 ·</text>
+  <rect width="120" height="160" rx="10" fill="#C2189B"/>
+  <circle cx="21.1" cy="46.5" r="5.8" fill="#FFF6E5"/>
+  <circle cx="33.2" cy="41.5" r="6.1" fill="#FFF6E5"/>
+  <circle cx="46.8" cy="41.5" r="6.1" fill="#FFF6E5"/>
+  <circle cx="58.9" cy="46.5" r="5.8" fill="#FFF6E5"/>
+  <ellipse cx="40" cy="67.4" rx="20.2" ry="16.9" fill="#FFF6E5"/>
+  <circle cx="61.1" cy="90.5" r="5.8" fill="#FFF6E5"/>
+  <circle cx="73.2" cy="85.5" r="6.1" fill="#FFF6E5"/>
+  <circle cx="86.8" cy="85.5" r="6.1" fill="#FFF6E5"/>
+  <circle cx="98.9" cy="90.5" r="5.8" fill="#FFF6E5"/>
+  <ellipse cx="80" cy="111.4" rx="20.2" ry="16.9" fill="#FFF6E5"/>
+  <circle cx="17" cy="17" r="14" fill="black" fill-opacity="0.32"/>
+  <text x="17" y="15" font-family="system-ui,Arial,sans-serif" font-size="13" font-weight="800" fill="#FFF6E5" text-anchor="middle" dominant-baseline="middle">12</text>
+  <g transform="translate(17,26)"><circle r="3" fill="#FFF6E5"/></g>
 </svg>

@@ -166,7 +166,7 @@ const W=450,H=800;
 cv.width=W;cv.height=H;
 
 // ── Размеры карт ─────────────────────────────────────────────────
-const CW=44,CH=66,CG=7;
+const CW=48,CH=72,CG=7; // было 44×66 — увеличено, текст на картах теперь читаем
 const HX=(W-(8*(CW+CG)-CG)>>1)|0;  // start x player/AI hand (~25)
 const TX=(W-(5*(CW+CG)-CG)>>1)|0;  // start x table, 5 cols (~101)
 
@@ -233,7 +233,8 @@ function getYaku(cap){
   const B=cap.filter(c=>c.t==='bright');
   const A=cap.filter(c=>c.t==='animal');
   const R=cap.filter(c=>c.t==='ribbon');
-  const chaffCount=cap.filter(c=>c.t==='plain'||c.sub==='sake').length;
+  // Канон: саке — животное (Тане, Ханами, Цукими), в Касу НЕ входит.
+  const chaffCount=cap.filter(c=>c.t==='plain').length;
   const y=[];
   const hasRain=B.some(c=>c.sub==='rain');
   if(B.length>=5)                    y.push({n:'Гоко',      p:10});
@@ -244,8 +245,8 @@ function getYaku(cap){
     y.push({n:'Ино-Сика-Тё',p:5});
   const hasCur=B.some(c=>c.sub==='curtain'),hasMoon=B.some(c=>c.sub==='moon');
   const hasSake=A.some(c=>c.sub==='sake');
-  if(hasCur&&hasSake)  y.push({n:'Ханами',  p:5});
-  if(hasMoon&&hasSake) y.push({n:'Цукими',  p:5});
+  if(hasCur&&hasSake)  y.push({n:'Ханами',  p:3});
+  if(hasMoon&&hasSake) y.push({n:'Цукими',  p:3});
   const poetry=R.filter(c=>c.sub==='poetry').length;
   const blue  =R.filter(c=>c.sub==='blue').length;
   if(poetry>=3) y.push({n:'Ака-тан', p:5});
@@ -258,16 +259,12 @@ function getYaku(cap){
 function yakuPts(y){return y.reduce((s,x)=>s+x.p,0);}
 function yakuKey(y){return y.map(x=>`${x.n}:${x.p}`).sort().join('|');}
 
-// Единая формула Kittyfooda: 7+ ×2; если кто-либо сказал Мяу-Мяу, ещё ×2.
+// Канон: удвоение только за Мяу-Мяу. 7+ ×2 было отсебятиной, убрано.
 function scoredPoints(base){
-  let mult=1;
-  if(base>=7) mult*=2;
-  if(G.koiKoi||G.aKoiKoi) mult*=2;
-  return base*mult;
+  return (G.koiKoi||G.aKoiKoi)?base*2:base;
 }
 function scoreBreakdown(base){
   const parts=[];
-  if(base>=7) parts.push('7+ ×2');
   if(G.koiKoi||G.aKoiKoi) parts.push('Мяу-Мяу ×2');
   return parts.length?` (${base}; ${parts.join(', ')})`:'';
 }
@@ -295,7 +292,75 @@ function persistState(){
 
 function newGame(){
   G={phase:'start',round:1,rounds:6,scores:[0,0],dealer:'player'};
+  logEvent('game_start',{diff:DIFF,rounds:6});
   newRound();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ЖУРНАЛ СОБЫТИЙ — плоский JSON, без отрисовки в игре.
+// Формат по образцу другого проекта: {version, exportedAt, events:[...]}.
+// Каждое решение ИИ пишется со ВСЕМИ рассмотренными вариантами и их
+// оценками, не только выбранным — этого не видно на экране ни при
+// каком UI, только через экспорт. Хранится в localStorage ЭТОГО
+// браузера/устройства, растёт, пока не нажмёшь «Очистить».
+// ═══════════════════════════════════════════════════════════════
+const EVENT_LOG_KEY='kittyfooda_event_log';
+const EVENT_LOG_VERSION='kittyfooda-hanafuda-1';
+const EVENT_LOG_MAX=4000; // строки лога — при превышении обрезаются старые
+
+function loadEventLog(){
+  try{
+    const raw=localStorage.getItem(EVENT_LOG_KEY);
+    if(!raw) return [];
+    const parsed=JSON.parse(raw);
+    return Array.isArray(parsed.events)?parsed.events:[];
+  }catch(e){ console.warn('loadEventLog failed',e); return []; }
+}
+function saveEventLog(events){
+  try{
+    const trimmed=events.length>EVENT_LOG_MAX?events.slice(events.length-EVENT_LOG_MAX):events;
+    localStorage.setItem(EVENT_LOG_KEY, JSON.stringify({version:EVENT_LOG_VERSION,events:trimmed}));
+  }catch(e){ console.warn('saveEventLog failed — возможно, localStorage переполнен или недоступен',e); }
+}
+function logEvent(type,payload){
+  const events=loadEventLog();
+  events.push(Object.assign({ts:Date.now(),type},payload));
+  saveEventLog(events);
+}
+function eventLogCount(){ return loadEventLog().length; }
+function clearEventLog(){ try{ localStorage.removeItem(EVENT_LOG_KEY); }catch(e){} }
+
+// Компактное описание карты для лога — тип/месяц/подтип, без внутренних id
+function cardDesc(c){ return c?{t:c.t,m:c.m,sub:c.sub||null}:null; }
+function handDesc(hand){ return hand.map(cardDesc); }
+
+function downloadEventLog(){
+  const events=loadEventLog();
+  const blob=new Blob([JSON.stringify({version:EVENT_LOG_VERSION,exportedAt:new Date().toISOString(),events},null,0)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`kittyfooda_log_${Date.now()}.json`;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+// Резервный способ на случай, если скачивание файла заблокировано
+// внутри Telegram WebView — тогда просто копируем JSON в буфер обмена.
+function copyEventLogToClipboard(onDone){
+  const events=loadEventLog();
+  const text=JSON.stringify({version:EVENT_LOG_VERSION,exportedAt:new Date().toISOString(),events});
+  const fallback=()=>{
+    try{
+      const ta=document.createElement('textarea');
+      ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+      document.body.appendChild(ta);ta.focus();ta.select();
+      document.execCommand('copy');document.body.removeChild(ta);
+      onDone();
+    }catch(e){ console.warn('copy failed',e); }
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(onDone).catch(fallback);
+  }else fallback();
 }
 
 function monthCounts(cards){
@@ -324,6 +389,8 @@ function newRound(){
     aiHL:-1,aiTargets:[],aiPreview:null,pendingCapture:null,
     msg:dealer==='player'?'Ваш ход — выберите карту из руки':'Дилер ИИ ходит первым...'};
   if(dealer==='player') G.phase='select';
+  logEvent('round_start',{round:G.round,diff:DIFF,dealer,
+    playerHand:handDesc(G.pHand),aiHand:handDesc(G.aHand),table:handDesc(G.table)});
   draw();persistState();
   if(dealer==='ai') setTimeout(aiTurnStart,650);
 }
@@ -404,61 +471,142 @@ function playerChoose(stop){
     const base=yakuPts(G.currentYaku||getYaku(G.pCap));
     endRound('player',scoredPoints(base));
   }else{
-    G.koiKoi=true;G.phase='wait';G.msg='Мяу-Мяу! Продолжаем...';draw();setTimeout(aiTurnStart,650);
+    G.koiKoi=true;G.phase='wait';G.msg='Мяу-Мяу! Продолжаем...';
+    showKoiKoiPopup('player',aiTurnStart);
   }
 }
 
 // ── Оценка карт и угроз ──────────────────────────────────────────
+// Грубая метрика редкости типа карты — используется только в подсказке
+// игроку (useHint), к оценкам ИИ отношения не имеет.
 function typeVal(c){return{bright:20,animal:10,ribbon:5,plain:1}[c.t]||0;}
+
+// ═══════════════════════════════════════════════════════════════
+// ПОРТФЕЛЬ ЯКУ — единая модель ценности карты для обеих сторон.
+//
+// Идея: вместо ручных чисел вида «+10 за вторую ленту» считаем для
+// каждого фиксированного яку три вещи — сколько элементов уже есть,
+// какие конкретно карты недостают, и какова вероятность их достать.
+// Ценность карты = насколько она меняет эту сумму. Отсюда бесплатно
+// получаются оба нужных свойства: яку, для которого недостающая
+// карта уже лежит у противника, обнуляется сам (карта локализована —
+// вероятность 0), а карта на пересечении нескольких почти готовых
+// яку (как саке при занавесе+луне у игрока) получает их сумму.
+//
+// Не точная теория вероятностей (независимость карт друг от друга —
+// упрощение), а инженерная оценка. Три места калибровки помечены
+// ниже; крутятся через headless-прогон, не на глаз.
+// ═══════════════════════════════════════════════════════════════
+const REF_DECK=buildDeck();
+const poolIds=pred=>REF_DECK.filter(pred).map(c=>c.id);
+const POOL_BRIGHT =poolIds(c=>c.t==='bright');                       // 5
+const POOL_RAIN_ID=poolIds(c=>c.sub==='rain')[0];
+const POOL_INO    =poolIds(c=>['boar','deer','butterfly'].includes(c.sub)); // 3
+const POOL_AKATAN =poolIds(c=>c.sub==='poetry');                     // 3
+const POOL_AOTAN  =poolIds(c=>c.sub==='blue');                       // 3
+const POOL_HANAMI =poolIds(c=>c.sub==='curtain'||c.sub==='sake');    // 2
+const POOL_TSUKIMI=poolIds(c=>c.sub==='moon'||c.sub==='sake');       // 2
+const POOL_RIBBON =poolIds(c=>c.t==='ribbon');                       // 10 (Тан)
+const POOL_ANIMAL =poolIds(c=>c.t==='animal');                       // 9  (Тане)
+const POOL_PLAIN  =poolIds(c=>c.t==='plain');                        // 24 (Касу, без саке — канон)
+
+// locateCardId зовётся десятки раз на одну оценку хода (по каждой
+// недостающей карте каждого пула); кешируем реальное расположение в Map
+// на время одной оценки — реальные зоны G не меняются, пока считается
+// гипотетический ход, меняется только локальный «cap» в cardVal/blockingValueFor.
+let _locMap=null;
+function buildLocMap(){
+  const m=new Map();
+  G.aCap.forEach(c=>m.set(c.id,'ai'));
+  G.pCap.forEach(c=>m.set(c.id,'opp'));
+  G.aHand.forEach(c=>{if(!m.has(c.id))m.set(c.id,'aiHand');});
+  G.table.forEach(c=>{if(!m.has(c.id))m.set(c.id,'table');});
+  return m;
+}
+function locateCardId(id){
+  if(!_locMap)_locMap=buildLocMap();
+  return _locMap.get(id)||'unknown'; // не в известных зонах — в колоде или руке игрока
+}
+// Вероятность, что карту id в итоге заберёт сторона side ('ai'|'opp').
+// Ключевое: если карта уже в стопке противоположной стороны — 0.
+// Калибровка №1: константы для руки/стола/неизвестной массы.
+function cardProb(id,side){
+  const loc=locateCardId(id);
+  if(loc==='ai') return side==='ai'?1:0;
+  if(loc==='opp')return side==='opp'?1:0;
+  if(loc==='aiHand') return side==='ai'?0.8:0.05;   // только владелец решает, когда сыграть
+  if(loc==='table'){
+    const myTurn=(G.turn==='ai')===(side==='ai');
+    return myTurn?0.58:0.42;                        // чуть выгоднее тому, чей сейчас ход
+  }
+  // Неизвестная масса: колода + рука соперника. Чем меньше своих
+  // оставшихся ходов относительно размера этой массы — тем ниже шанс
+  // встретить именно эту карту. Даёт естественное затухание к концу раздачи.
+  const U=Math.max(1,unknownCount());
+  const chances=side==='ai'?G.aHand.length:G.pHand.length;
+  return Math.min(0.5,chances/U);
+}
+// Линейная интерполяция по контрольным точкам — для плавных порогов
+// вместо резких скачков на границах Санко/Сико/Гоко.
+function lerpTable(x,pts){
+  for(let i=0;i<pts.length-1;i++){
+    const[x0,y0]=pts[i],[x1,y1]=pts[i+1];
+    if(x<=x1) return y0+(y1-y0)*Math.max(0,(x-x0)/(x1-x0));
+  }
+  return pts[pts.length-1][1];
+}
+function fixedSetValue(pool,pts,cap,side){
+  const owned=pool.filter(id=>cap.some(c=>c.id===id));
+  if(owned.length===pool.length) return pts; // уже собрано — точно, не вероятностно
+  let p=1;
+  for(const id of pool) if(!owned.includes(id)) p*=cardProb(id,side);
+  return pts*p;
+}
+function brightValue(cap,side){
+  const owned=POOL_BRIGHT.filter(id=>cap.some(c=>c.id===id));
+  let E=owned.length;
+  for(const id of POOL_BRIGHT) if(!owned.includes(id)) E+=cardProb(id,side);
+  // Санко 5 / Сико 8 / Амэ-Сико 7 — усредняем 4-й порог, т.к. не знаем
+  // заранее, войдёт ли в набор именно дождь.
+  return lerpTable(E,[[0,0],[3,5],[4,7.5],[5,10]]);
+}
+function progressiveValue(pool,cap,side){
+  const owned=pool.filter(id=>cap.some(c=>c.id===id)).length;
+  let E=owned;
+  for(const id of pool) if(!cap.some(c=>c.id===id)) E+=cardProb(id,side);
+  return Math.max(0,E-4); // по 1 очку за каждую сверх четырёх — как в getYaku
+}
+// Полная ожидаемая стоимость портфеля одной стороны в очках яку.
+function portfolioValue(cap,side){
+  return fixedSetValue(POOL_INO,5,cap,side)
+       + fixedSetValue(POOL_AKATAN,5,cap,side)
+       + fixedSetValue(POOL_AOTAN,5,cap,side)
+       + fixedSetValue(POOL_HANAMI,3,cap,side)
+       + fixedSetValue(POOL_TSUKIMI,3,cap,side)
+       + brightValue(cap,side)
+       + progressiveValue(POOL_RIBBON,cap,side)
+       + progressiveValue(POOL_ANIMAL,cap,side)
+       + progressiveValue(POOL_PLAIN,cap,side);
+}
+// Ценность карты для собственного портфеля ИИ — насколько её взятие
+// поднимает ожидаемую сумму очков.
 function cardVal(card,captured){
-  const before=yakuPts(getYaku(captured)),after=yakuPts(getYaku([...captured,card]));
-  let pot=0;
-  const ist=['boar','deer','butterfly'];
-  if(ist.includes(card.sub)) pot+=ist.filter(s=>captured.some(c=>c.sub===s)).length*12;
-  if(card.sub==='poetry') pot+=captured.filter(c=>c.sub==='poetry').length*10;
-  if(card.sub==='blue') pot+=captured.filter(c=>c.sub==='blue').length*10;
-  if(card.t==='bright') pot+=captured.filter(c=>c.t==='bright').length*7;
-  if(card.sub==='sake') pot+=10;
-  if(card.sub==='curtain'||card.sub==='moon') pot+=6;
-  return (after-before)*12+pot+typeVal(card)*0.35;
+  // Базовое значение для ТЕКУЩИХ G.aCap кешируется; если captured — это
+  // гипотетическая (не текущая) стопка, считаем честно без кеша.
+  const base=(captured===G.aCap)?basePortfolio().ai:portfolioValue(captured,'ai');
+  return portfolioValue([...captured,card],'ai')-base;
 }
+// Ценность карты как БЛОКИРОВКИ — тот же расчёт, но с точки зрения
+// портфеля игрока: сколько он теряет, если карта достанется не ему.
+// Это то место, где саке при занавесе+луне у игрока получает высокую
+// оценку сама по себе — как сумма двух почти готовых яку.
 function blockingValueFor(card,cap){
-  let v=0;
-  if(card.sub==='sake'){
-    v+=8;if(cap.some(c=>c.sub==='curtain'))v+=18;if(cap.some(c=>c.sub==='moon'))v+=18;
-  }
-  if(card.sub==='curtain'||card.sub==='moon'){
-    v+=cap.some(c=>c.sub==='sake')?18:4;
-    v+=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length*5;
-  }
-  if(['boar','deer','butterfly'].includes(card.sub)){
-    const n=['boar','deer','butterfly'].filter(s=>cap.some(c=>c.sub===s)).length;
-    v+=n*11;if(n===2)v+=14;
-  }
-  if(card.sub==='poetry'){
-    const n=cap.filter(c=>c.sub==='poetry').length;v+=n*10;if(n===2)v+=12;
-  }
-  if(card.sub==='blue'){
-    const n=cap.filter(c=>c.sub==='blue').length;v+=n*10;if(n===2)v+=12;
-  }
-  if(card.t==='bright'){
-    const n=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length;v+=n*6;if(n>=2)v+=10;
-  }
-  return v;
+  const base=(cap===G.pCap)?basePortfolio().opp:portfolioValue(cap,'opp');
+  return portfolioValue([...cap,card],'opp')-base;
 }
-function playerThreatScore(){
-  const cap=G.pCap;
-  let v=0;
-  const count=subs=>subs.filter(s=>cap.some(c=>c.sub===s)).length;
-  const ist=count(['boar','deer','butterfly']); if(ist===2)v+=18;
-  const po=cap.filter(c=>c.sub==='poetry').length;if(po===2)v+=15;
-  const bl=cap.filter(c=>c.sub==='blue').length;if(bl===2)v+=15;
-  const br=cap.filter(c=>c.t==='bright'&&c.sub!=='rain').length;if(br>=2)v+=br*5;
-  if(cap.some(c=>c.sub==='sake')){
-    if(!cap.some(c=>c.sub==='curtain'))v+=7;if(!cap.some(c=>c.sub==='moon'))v+=7;
-  }
-  return v;
-}
+// Общая ожидаемая ценность портфеля игрока — используется в решении
+// Мяу-Мяу/Стоп как мера того, есть ли у него вообще что терять.
+function playerThreatScore(){ return basePortfolio().opp; }
 function gamePhase(){return Math.max(0,Math.min(1,(24-G.deck.length)/16));}
 
 function legalMovesForHand(hand,table=G.table){
@@ -475,13 +623,19 @@ function simulateTableAfter(action,table=G.table){
   if(!action.captureIds.length)t.push(action.card);
   return t;
 }
+// Единый расчёт: разница ожидаемых очков портфеля ДО и ПОСЛЕ хода —
+// одним атомарным diff на карту+все взятые сразу (не по одной!), иначе
+// комбинация из двух карт, которая ЗАВЕРШАЕТ яку только вместе
+// (например, обе последние поэтические ленты разом), недосчиталась бы.
+// SCALE=1: раньше здесь стоял отдельный «×22» поверх сырого прироста
+// getYaku — то была вторая, несогласованная шкала очков сверху cardVal.
+// Портфель уже сам в единицах ожидаемых очков, второй множитель не нужен.
 function immediateGain(action,cap,table=G.table){
   const taken=captureCardsFor(action,table);
   if(!taken.length) return -cardVal(action.card,cap)*0.18;
-  const before=yakuPts(getYaku(cap));
-  const afterCap=[...cap,action.card,...taken];
-  const after=yakuPts(getYaku(afterCap));
-  return (after-before)*22+cardVal(action.card,cap)+taken.reduce((s,c)=>s+cardVal(c,cap),0)+taken.length*2;
+  const before=(cap===G.aCap)?basePortfolio().ai:portfolioValue(cap,'ai');
+  const after=portfolioValue([...cap,action.card,...taken],'ai');
+  return (after-before)+taken.length*0.5; // +0.5/карту — темп, не яку-ценность
 }
 function defensiveGain(action){
   const taken=captureCardsFor(action);
@@ -500,78 +654,168 @@ function hardActionScore(a){
 
 function publicUnknownCards(){
   const knownIds=new Set([...G.aHand,...G.table,...G.aCap,...G.pCap].map(c=>c.id));
-  return buildDeck().filter(c=>!knownIds.has(c.id));
+  return REF_DECK.filter(c=>!knownIds.has(c.id)); // REF_DECK — общий эталон, не пересоздаём колоду
 }
+// Портфель зовёт publicUnknownCards().length на каждую недостающую карту
+// каждого пула при оценке каждого хода — кешируем на время одной оценки,
+// сбрасывается перед каждым вызовом aiChooseMove/expertSimulationScore.
+let _unknownCountCache=null;
+function unknownCount(){
+  if(_unknownCountCache==null){
+    const knownIds=new Set([...G.aHand,...G.table,...G.aCap,...G.pCap].map(c=>c.id));
+    _unknownCountCache=REF_DECK.reduce((n,c)=>n+(knownIds.has(c.id)?0:1),0);
+  }
+  return _unknownCountCache;
+}
+// portfolioValue(G.aCap/'ai') и (G.pCap/'opp') в исходном виде запрашиваются
+// заново на каждого кандидата хода и на каждый сэмпл симуляции, хотя сами
+// стопки не меняются в пределах одной оценки — кешируем базовые значения.
+let _basePortfolio=null;
+function basePortfolio(){
+  if(!_basePortfolio) _basePortfolio={ai:portfolioValue(G.aCap,'ai'),opp:portfolioValue(G.pCap,'opp')};
+  return _basePortfolio;
+}
+function invalidateUnknownCache(){ _unknownCountCache=null; _locMap=null; _basePortfolio=null; }
 function bestCaptureOptionForCard(card,table,cap,defCap=null){
   const opts=captureOptions(card,table);
   let best=opts[0],bs=-Infinity;
+  const before=(cap===G.aCap)?basePortfolio().ai:portfolioValue(cap,'ai');
   for(const ids of opts){
-    const action={card,captureIds:ids};
     const taken=table.filter(c=>ids.includes(c.id));
     let s;
     if(!ids.length) s=-cardVal(card,cap)*0.12;
     else{
-      const before=yakuPts(getYaku(cap));
-      const after=yakuPts(getYaku([...cap,card,...taken]));
-      s=(after-before)*22+cardVal(card,cap)+taken.reduce((x,c)=>x+cardVal(c,cap),0);
+      const after=portfolioValue([...cap,card,...taken],'ai');
+      s=(after-before)+taken.length*0.5;
       if(defCap) s+=taken.reduce((x,c)=>x+blockingValueFor(c,defCap),0)*0.7;
     }
     if(s>bs){bs=s;best=ids;}
   }
   return {ids:best,score:bs};
 }
-function expertSimulationScore(action,samples=120){
+// ── Expert: какие месяцы ещё «живы» ──────────────────────────────
+// ИИ видит стол, обе стопки захвата и свою руку. Если все 4 карты месяца
+// уже там, карта этого месяца в руке никогда не захватит — это балласт.
+function seenMonthCounts(){
+  const cnt={};
+  const add=c=>cnt[c.m]=(cnt[c.m]||0)+1;
+  G.table.forEach(add);G.aCap.forEach(add);G.pCap.forEach(add);G.aHand.forEach(add);
+  return cnt;
+}
+function isDeadCard(card,counts,table){
+  return (4-(counts[card.m]||0))<=0 && !table.some(t=>t.m===card.m);
+}
+// Учёт собственной руки: чем сбрасываем и что после этого остаётся.
+function handSynergy(action){
+  if(action.handIndex==null) return 0;
+  const counts=seenMonthCounts();
+  const rest=G.aHand.filter((_,i)=>i!==action.handIndex);
+  let v=0;
+  if(!action.captureIds.length){
+    const unseen=4-(counts[action.card.m]||0);
+    const pairOnTable=G.table.some(t=>t.m===action.card.m);
+    if(unseen<=0&&!pairOnTable) v+=8.5;                      // сбросили труп — отлично
+    else{
+      v-=unseen*1.6;                                         // живую карту отдавать жалко
+      if(rest.some(c=>c.m===action.card.m)) v-=3.6;          // рвём свою пару
+    }
+  }
+  for(const c of rest) if(isDeadCard(c,counts,G.table)) v-=3.2;
+  return v;
+}
+// Базовая оценка Expert. Отдельно от hardActionScore, чтобы веса
+// защиты не учитывались дважды при сложении с симуляцией.
+// Expert взвешивает защиту сильнее Hard (1.5 против 0.9), и вдобавок
+// получает НЕЛИНЕЙНУЮ надбавку за особо крупные блокировки: чем ближе
+// чужой яку к завершению, тем выше сам defensiveGain (это не отдельная
+// метрика «близости» — она уже зашита в портфельный diff, как в тесте
+// с саке при занавесе+луне у игрока), а выпуклый бонус усиливает именно
+// такие случаи ещё сильнее сверх линейного веса.
+function expertBaseScore(a){
+  const phase=gamePhase();
+  const def=defensiveGain(a);
+  let s=immediateGain(a,G.aCap)+def*1.5+Math.max(0,def-2)*1.3;
+  if(G.koiKoi) s+=def*0.6;
+  if(phase>0.65) s+=def*0.35;
+  return s+handSynergy(a);
+}
+// Противник держит целую руку и играет ЛУЧШЕЙ картой, а не случайной.
+// Берём максимум по нескольким пробам — иначе угроза занижается в разы.
+function opponentBestResponse(table,oppCap,myCap,unknown,k){
+  let best=-Infinity;
+  const n=Math.max(1,Math.min(k,unknown.length));
+  for(let i=0;i<n;i++){
+    const c=unknown[(Math.random()*unknown.length)|0];
+    const s=bestCaptureOptionForCard(c,table,oppCap,myCap).score;
+    if(s>best)best=s;
+  }
+  return Math.max(0,best);
+}
+function expertSimulationScore(action){
   const unknown=publicUnknownCards();
-  if(!unknown.length)return hardActionScore(action);
+  if(!unknown.length) return expertBaseScore(action);
   const baseTable=simulateTableAfter(action);
   const baseCap=[...G.aCap];
   const taken=captureCardsFor(action);
   if(taken.length)baseCap.push(action.card,...taken);
+
+  // Эндшпиль: неизвестных мало — перебираем их все, без случайности
+  const exact=unknown.length<=10;
+  // После кеширования портфеля вычисления заметно подешевели — увеличиваем
+  // глубину взгляда вперёд, это чисто Expert-эксклюзивное преимущество.
+  const samples=exact?unknown.length:(gamePhase()>0.6?70:42);
+  const oppK=Math.min(6,Math.max(1,G.pHand.length));
+
   let total=0;
   for(let k=0;k<samples;k++){
-    const drawCard=unknown[(Math.random()*unknown.length)|0];
-    const drawChoice=bestCaptureOptionForCard(drawCard,baseTable,baseCap,G.pCap);
-    const drawIds=drawChoice.ids;
-    const drawTaken=baseTable.filter(c=>drawIds.includes(c.id));
-    let table2=baseTable.filter(c=>!drawIds.includes(c.id));
-    let cap2=[...baseCap];
-    if(drawIds.length)cap2.push(drawCard,...drawTaken);else table2=[...table2,drawCard];
-    let future=drawChoice.score*0.55;
-
-    // Приближённый ответ противника из той же публично неизвестной массы.
-    let oppCard=unknown[(Math.random()*unknown.length)|0];
-    if(unknown.length>1&&oppCard.id===drawCard.id)oppCard=unknown[(unknown.indexOf(oppCard)+1)%unknown.length];
-    const oppChoice=bestCaptureOptionForCard(oppCard,table2,G.pCap,cap2);
-    const oppThreat=Math.max(0,oppChoice.score);
-    future-=oppThreat*0.42;
-    total+=future;
+    const drawCard=exact?unknown[k]:unknown[(Math.random()*unknown.length)|0];
+    const dc=bestCaptureOptionForCard(drawCard,baseTable,baseCap,G.pCap);
+    const drawTaken=baseTable.filter(c=>dc.ids.includes(c.id));
+    let table2=baseTable.filter(c=>!dc.ids.includes(c.id));
+    const cap2=[...baseCap];
+    if(dc.ids.length)cap2.push(drawCard,...drawTaken);else table2=[...table2,drawCard];
+    total+=dc.score*0.55-opponentBestResponse(table2,G.pCap,cap2,unknown,oppK)*0.5;
   }
-  return hardActionScore(action)+total/samples;
+  return expertBaseScore(action)+total/samples;
 }
 
 // ── Четыре уровня ИИ ─────────────────────────────────────────────
 function aiChooseMove(){
+  invalidateUnknownCache(); // состав известного не меняется внутри одной оценки хода
   const moves=legalMovesForHand(G.aHand);
   if(!moves.length)return null;
   if(DIFF===1) return moves[(Math.random()*moves.length)|0];
-  let best=moves[0],bs=-Infinity;
-  for(const m of moves){
+  let best=moves[0],bs=-Infinity,bi=0;
+  const scored=moves.map((m,i)=>{
     const s=DIFF===2?normalActionScore(m):DIFF===3?hardActionScore(m):expertSimulationScore(m);
-    if(s>bs){bs=s;best=m;}
+    if(s>bs){bs=s;best=m;bi=i;}
+    return {card:cardDesc(m.card),capture:m.captureIds.length>0,captureCount:m.captureIds.length,score:+s.toFixed(3)};
+  });
+  // Пишем событие только когда был реальный выбор — единственный
+  // легальный ход не решение, а вынужденный ход.
+  if(moves.length>1){
+    logEvent('ai_move_decision',{round:G.round,diff:DIFF,phase:+gamePhase().toFixed(2),candidates:scored,chosenIndex:bi});
   }
   return best;
 }
 function aiChooseCaptureIds(card){
+  invalidateUnknownCache();
   const opts=captureOptions(card);
   if(opts.length===1)return opts[0];
   if(DIFF===1)return opts[(Math.random()*opts.length)|0];
-  let best=opts[0],bs=-Infinity;
-  for(const ids of opts){
+  let best=opts[0],bs=-Infinity,bi=0;
+  const scored=opts.map((ids,i)=>{
     const a={card,captureIds:ids};
     let s=immediateGain(a,G.aCap);
-    if(DIFF>=3)s+=defensiveGain(a)*(DIFF===4?1.25:0.85);
-    if(s>bs){bs=s;best=ids;}
-  }
+    if(DIFF===3) s+=defensiveGain(a)*0.85;               // Hard — без изменений
+    else if(DIFF===4){                                    // Expert — тот же принцип, что в expertBaseScore
+      const def=defensiveGain(a);
+      s+=def*1.5+Math.max(0,def-2)*1.3;
+    }
+    if(s>bs){bs=s;best=ids;bi=i;}
+    return {captureIds:ids.map(id=>{const c=G.table.find(t=>t.id===id);return c?cardDesc(c):null;}),score:+s.toFixed(3)};
+  });
+  logEvent('ai_capture_choice',{round:G.round,diff:DIFF,card:cardDesc(card),candidates:scored,chosenIndex:bi});
   return best;
 }
 
@@ -585,36 +829,85 @@ function nearCompletionBonus(cap=G.aCap){
   if(sake&&!cap.some(c=>c.sub==='curtain'))b+=2.5;if(sake&&!cap.some(c=>c.sub==='moon'))b+=2.5;
   return b;
 }
+
+// Выплата без обращения к глобальным флагам — нужна для сравнения сценариев.
+function payout(base,doubled){ return doubled?base*2:base; }
+// Ключевой момент правил Kittyfooda: при исчерпании рук раунд не сгорает,
+// а достаётся тому, у кого яку дороже. Значит Мяу-Мяу с сильным яку
+// гораздо безопаснее, чем в классических правилах.
+//
+// Решение строится в ОДНИХ единицах — ожидаемых очках портфеля — для
+// обеих сторон. Отсюда бесплатно получается нужное поведение: если у
+// игрока портфель почти пуст (ему нечего собирать), риск продолжения
+// у нас низкий и «взять яку и стоп» само по себе не станет предпочтительнее
+// без явного правила — сравнение чисел решает это само.
+// Калибровка №2: сила ответной реакции противника (weightOpp ниже).
+let LAST_KOI_BREAKDOWN=null;
 function expertKoiEV(pts){
-  const unknown=publicUnknownCards();
-  if(!unknown.length)return -pts;
-  let improve=0;
-  for(const c of unknown){
-    const best=bestCaptureOptionForCard(c,G.table,G.aCap,G.pCap);
-    if(best.ids.length){
-      const taken=G.table.filter(t=>best.ids.includes(t.id));
-      const next=yakuPts(getYaku([...G.aCap,c,...taken]));
-      if(next>pts)improve+=next-pts;
-    }
-  }
-  const expected=improve/unknown.length;
-  const risk=(playerThreatScore()/12)*(0.5+gamePhase());
-  return expected-risk;
+  const draws=G.aHand.length;
+  const doubled=G.koiKoi||G.aKoiKoi;
+  const stopNow=payout(pts,doubled);
+  if(draws<=0){ LAST_KOI_BREAKDOWN={ownEV:0,oppEV:0,pOppBeats:0,stopNow}; return -99; }
+
+  // Ожидаемый ИТОГ портфеля ИИ, если раунд доиграется до конца —
+  // уже включает и то, что достигнуто, и вероятностную надбавку.
+  const ownEV=Math.max(pts,basePortfolio().ai);
+  // То же для игрока — единственный источник «угрозы» в этой модели.
+  const oppEV=basePortfolio().opp;
+
+  // Грубая оценка «кто победит по яку», если руки кончатся раньше стопа:
+  // относительная сила портфелей. weightOpp — та самая калибровка:
+  // при 0 угроза от противника нулевая, но не может расти быстрее нас.
+  const weightOpp=0.55;
+  const pOppBeats=oppEV<=0?0.03:Math.min(0.85,(oppEV*weightOpp)/(oppEV*weightOpp+ownEV+1));
+
+  // Раунд заканчивается либо явным стопом (тогда действует ×2 за Мяу-Мяу),
+  // либо исчерпанием рук — а там теперь БЕЗ множителя, только разница сумм
+  // яку (см. endRound). pExhaust — грубая оценка, что до явного стопа дело
+  // не дойдёт и раунд решится именно исчерпанием: чем позже фаза игры и
+  // меньше ходов остаётся, тем выше шанс не успеть зафиксировать стоп.
+  const pExhaust=Math.max(0.15,Math.min(0.75,gamePhase()));
+  const winExplicit=payout(ownEV,true);
+  const winExhaust=Math.max(0,ownEV-oppEV);
+  const winContinue=(1-pExhaust)*winExplicit+pExhaust*winExhaust;
+  const loseExplicit=-payout(oppEV,true);
+  const loseExhaust=-Math.max(0,oppEV-ownEV);
+  const loseContinue=(1-pExhaust)*loseExplicit+pExhaust*loseExhaust;
+  const evKoi=(1-pOppBeats)*winContinue+pOppBeats*loseContinue;
+  LAST_KOI_BREAKDOWN={ownEV:+ownEV.toFixed(2),oppEV:+oppEV.toFixed(2),pOppBeats:+pOppBeats.toFixed(2),stopNow:+stopNow.toFixed(2),evKoi:+evKoi.toFixed(2)};
+  return evKoi-stopNow;
 }
 function aiShouldKoiKoi(pts){
-  if(DIFF===1) return pts<3&&Math.random()<0.65;
+  invalidateUnknownCache();
+  if(DIFF===1){
+    const d=pts<3&&Math.random()<0.65;
+    logEvent('ai_koikoi_decision',{round:G.round,diff:DIFF,pts,decision:d?'koikoi':'stop'});
+    return d;
+  }
   const near=nearCompletionBonus();
-  if(DIFF===2) return pts<3||(pts<5&&near>=4);
+  if(DIFF===2){
+    const d=pts<3||(pts<5&&near>=4);
+    logEvent('ai_koikoi_decision',{round:G.round,diff:DIFF,pts,near:+near.toFixed(2),decision:d?'koikoi':'stop'});
+    return d;
+  }
   const threat=playerThreatScore(),phase=gamePhase();
   if(DIFF===3){
-    if(threat>=18||phase>0.75)return false;
-    return pts<4||(pts<6&&near>=4.5);
+    let d;
+    if(threat>=18||phase>0.75) d=false;
+    else d=pts<4||(pts<6&&near>=4.5);
+    logEvent('ai_koikoi_decision',{round:G.round,diff:DIFF,pts,threat:+threat.toFixed(2),near:+near.toFixed(2),decision:d?'koikoi':'stop'});
+    return d;
   }
+  // Expert: решение по матожиданию с поправкой на положение в матче
   const ev=expertKoiEV(pts);
   const lead=G.scores[1]-G.scores[0];
-  if(lead>8&&pts>=3)return false;
-  if(threat>=20&&pts>=2)return false;
-  return ev>0.7||(lead<-8&&ev>-0.2&&pts<7);
+  const roundsLeft=G.rounds-G.round;
+  let d;
+  if(lead>10&&roundsLeft<=1&&pts>=2) d=false;        // ведём под конец — фиксируем
+  else if(lead<-10&&roundsLeft<=1)   d=ev>-4;         // догоняем — рискуем шире
+  else                                d=ev>0;
+  logEvent('ai_koikoi_decision',Object.assign({round:G.round,diff:DIFF,pts,ev:+ev.toFixed(2),lead,roundsLeft},LAST_KOI_BREAKDOWN,{decision:d?'koikoi':'stop'}));
+  return d;
 }
 
 function aiTurnStart(){
@@ -656,6 +949,11 @@ function aiDraw(){
     },300);
   },600);
 }
+let KOIKOI_POPUP=null; // 'ai'|'player'|null — временный крупный попап поверх экрана
+function showKoiKoiPopup(side,cb){
+  KOIKOI_POPUP=side;draw();
+  setTimeout(()=>{KOIKOI_POPUP=null;draw();if(cb)cb();},900);
+}
 function finishAiTurn(){
   const yaku=getYaku(G.aCap),pts=yakuPts(yaku),key=yakuKey(yaku);
   const improved=pts>0&&(pts>G.aPrevPts||key!==G.aPrevYakuKey);
@@ -664,8 +962,8 @@ function finishAiTurn(){
     if(!aiShouldKoiKoi(pts)){
       G.msg=`ИИ: яку ${pts}, СТОП!`;draw();setTimeout(()=>endRound('ai',scoredPoints(pts)),900);return;
     }
-    G.aKoiKoi=true;G.msg=`🐱 ИИ говорит МЯУ-МЯУ! (${pts} оч.)`;draw();
-    setTimeout(passToPlayer,900);return;
+    G.aKoiKoi=true;G.msg=`🐱 ИИ говорит МЯУ-МЯУ! (${pts} оч.)`;
+    showKoiKoiPopup('ai',passToPlayer);return;
   }
   if(!G.pHand.length&&!G.aHand.length){endRound();return;}
   passToPlayer();
@@ -678,34 +976,45 @@ function passToPlayer(){
 // ── Завершение раунда ────────────────────────────────────────────
 function endRound(winner,pts){
   G.phase='roundover';
+  let roundWinner=winner,roundPts=0,roundYaku=[];
   if(winner==='player'){
-    const base=yakuPts(getYaku(G.pCap));
+    const y=getYaku(G.pCap),base=yakuPts(y);
     const award=pts==null?scoredPoints(base):pts;
     G.scores[0]+=award;G.dealer='player';
     G.msg=`Раунд ${G.round}: вы выиграли! +${award} очков${scoreBreakdown(base)}`;
+    roundPts=award;roundYaku=y.map(x=>x.n);
   }else if(winner==='ai'){
-    const base=yakuPts(getYaku(G.aCap));
+    const y=getYaku(G.aCap),base=yakuPts(y);
     const award=pts==null?scoredPoints(base):pts;
     G.scores[1]+=award;G.dealer='ai';
     G.msg=`Раунд ${G.round}: ИИ выиграл! +${award} очков${scoreBreakdown(base)}`;
+    roundPts=award;roundYaku=y.map(x=>x.n);
   }else{
-    // House rule Kittyfooda: при исчерпании рук сравниваем текущую стоимость яку.
+    // House rule Kittyfooda: при исчерпании рук — БЕЗ множителя за Мяу-Мяу.
+    // Награда — разница между суммами яку, а не полная сумма победителя.
+    // Так объявление Мяу-Мяу становится настоящим риском: если не успел
+    // зафиксировать явным стопом, а колода кончилась — бонуса не будет.
     const pp=yakuPts(getYaku(G.pCap)),ap=yakuPts(getYaku(G.aCap));
     if(pp>ap){
-      const award=scoredPoints(pp);G.scores[0]+=award;G.dealer='player';
-      G.msg=`Раунд ${G.round}: по яку — вы! +${award} оч.${scoreBreakdown(pp)}`;
+      const award=pp-ap;G.scores[0]+=award;G.dealer='player';
+      G.msg=`Раунд ${G.round}: по яку — вы! +${award} оч. (разница ${pp}−${ap})`;
+      roundWinner='player';roundPts=award;roundYaku=getYaku(G.pCap).map(x=>x.n);
     }else if(ap>pp){
-      const award=scoredPoints(ap);G.scores[1]+=award;G.dealer='ai';
-      G.msg=`Раунд ${G.round}: по яку — ИИ! +${award} оч.${scoreBreakdown(ap)}`;
+      const award=ap-pp;G.scores[1]+=award;G.dealer='ai';
+      G.msg=`Раунд ${G.round}: по яку — ИИ! +${award} оч. (разница ${ap}−${pp})`;
+      roundWinner='ai';roundPts=award;roundYaku=getYaku(G.aCap).map(x=>x.n);
     }else{
       // При равенстве dealer сохраняется.
       G.msg=`Раунд ${G.round}: ничья`;
+      roundWinner='draw';
     }
   }
+  logEvent('round_end',{round:G.round,winner:roundWinner,pts:roundPts,yaku:roundYaku,scores:[...G.scores]});
   if(G.round>=G.rounds){
     G.phase='gameover';
     const result=G.scores[0]>G.scores[1]?'win':(G.scores[0]<G.scores[1]?'lose':'draw');
     saveMatchResult(result,G.scores[0],G.scores[1]);
+    logEvent('game_end',{result,scores:[...G.scores],diff:DIFF});
   }
   draw();
 }
@@ -728,6 +1037,7 @@ function draw(){
   ct.clearRect(0,0,W,H);
   ct.fillStyle='#0a0603';ct.fillRect(0,0,W,H);
   if(G.phase==='start'||G.phase==='gameover'){drawOverlay();return;}
+  if(G.phase==='log'){drawEventLogScreen();return;}
   drawHeader();
   drawAIHand();
   drawTable();
@@ -737,14 +1047,84 @@ function draw(){
   drawMsgBar();
   if(G.phase==='choose')    drawChoiceBtns();
   if(G.phase==='roundover') drawRoundOver();
+  if(KOIKOI_POPUP) drawKoiKoiPopup();
   persistState();
+}
+function drawKoiKoiPopup(){
+  const isAi=KOIKOI_POPUP==='ai';
+  const col=isAi?'#c04040':'#70e870';
+  const who=isAi?'ИИ':'ВЫ';
+  ct.save();
+  ct.fillStyle='rgba(4,2,1,.55)';ct.fillRect(0,0,W,H);
+  const cy=H*0.42,cw=300,ch=104;
+  ct.shadowColor=col;ct.shadowBlur=28;
+  ct.fillStyle='rgba(10,6,3,.92)';
+  ct.beginPath();rr((W-cw)/2,cy-ch/2,cw,ch,16);ct.fill();
+  ct.shadowBlur=0;
+  ct.strokeStyle=col;ct.lineWidth=2.5;
+  ct.beginPath();rr((W-cw)/2,cy-ch/2,cw,ch,16);ct.stroke();
+  ct.textAlign='center';ct.textBaseline='middle';
+  ct.fillStyle=col;ct.font='bold 15px Georgia';
+  ct.fillText(`${who} ГОВОРИТ`,W/2,cy-24);
+  ct.font='bold 34px Georgia';
+  ct.fillText('🐱 МЯУ-МЯУ!',W/2,cy+12);
+  ct.restore();
 }
 
 // Карта
 // ── Загрузка спрайтов карт (котики) ──────────────────────────────
-const CARD_IMG_BASE = 'cards/';
-const cardImgCache = {};
-let plainCounters = {}; // для нумерации plain1/plain2/plain3 по каждому месяцу при построении колоды
+// Спрайты вшиты в файл: игра остаётся одним самодостаточным HTML,
+// без 48 сетевых запросов и без зависимости от папки cards/.
+const CARD_SVG = {
+  "m10_animal": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#E2611A\"/>\n  <polygon points=\"30,40 22,8 46,26\" fill=\"#FFF6E5\"/>\n  <polygon points=\"90,40 98,8 74,26\" fill=\"#FFF6E5\"/>\n  <polygon points=\"36.24,48.84 42.84,17.041199999999996 58.02,41.58\" fill=\"#9E3D07\"/>\n  <polygon points=\"83.75999999999999,48.84 77.16,17.041199999999996 61.98,41.58\" fill=\"#9E3D07\"/>\n  <circle cx=\"60\" cy=\"66\" r=\"33\" fill=\"#FFF6E5\"/>\n  <circle cx=\"48.120000000000005\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <circle cx=\"71.88\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <polygon points=\"60,79.86 54.39,71.94 65.61,71.94\" fill=\"#E0748A\"/>\n  <rect x=\"32.6\" y=\"135\" width=\"54.8\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"17\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Deer</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">10</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-4.5 4.5,0 0,4.5 -4.5,0\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m10_plain1": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#E2611A\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">10</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m10_plain2": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#E2611A\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">10</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m10_ribbon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#E2611A\"/>\n  <rect x=\"0\" y=\"58\" width=\"120\" height=\"44\" fill=\"#2C5FD8\"/>\n  <polygon points=\"60,66 78,80 60,94 42,80\" fill=\"#FFF6E5\"/>\n  <rect x=\"15.1\" y=\"135\" width=\"89.9\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"11.5\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Blue Ribbon</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">10</text>\n  <g transform=\"translate(17,26)\"><rect x=\"-5\" y=\"-2\" width=\"10\" height=\"4\" rx=\"2\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m11_animal": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#4A5C6A\"/>\n  <polygon points=\"36.24,48.84 42.84,17.041199999999996 58.02,41.58\" fill=\"#2A3742\"/>\n  <polygon points=\"83.75999999999999,48.84 77.16,17.041199999999996 61.98,41.58\" fill=\"#2A3742\"/>\n  <circle cx=\"60\" cy=\"66\" r=\"33\" fill=\"#FFF6E5\"/>\n  <circle cx=\"48.120000000000005\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <circle cx=\"71.88\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <polygon points=\"60,79.86 54.39,71.94 65.61,71.94\" fill=\"#E0748A\"/>\n  <ellipse cx=\"46\" cy=\"118\" rx=\"16.5\" ry=\"9.3\" fill=\"#FFF6E5\"/>\n  <polygon points=\"62.5,118 75.7,108.1 75.7,127.9\" fill=\"#FFF6E5\"/>\n  <rect x=\"23.6\" y=\"135\" width=\"72.8\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"14\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Swallow</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">11</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-4.5 4.5,0 0,4.5 -4.5,0\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m11_bright": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#4A5C6A\"/>\n  <circle cx=\"60\" cy=\"66\" r=\"27\" fill=\"#FFF6E5\"/>\n  <circle cx=\"60\" cy=\"66\" r=\"27\" fill=\"#9FC4DE\"/>\n  <polygon points=\"34,128 26,102 42,102\" fill=\"#FFF6E5\"/>\n  <polygon points=\"50,128 42,102 58,102\" fill=\"#FFF6E5\"/>\n  <polygon points=\"70,128 62,102 78,102\" fill=\"#FFF6E5\"/>\n  <polygon points=\"86,128 78,102 94,102\" fill=\"#FFF6E5\"/>\n  <rect x=\"19.4\" y=\"135\" width=\"81.2\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"14\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Rain Man</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">11</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-5 1.5,-1.5 5,-1.5 2,1 3,4.5 0,2.5 -3,4.5 -2,1 -5,-1.5 -1.5,-1.5\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m11_plain1": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#4A5C6A\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">11</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m11_ribbon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#4A5C6A\"/>\n  <rect x=\"0\" y=\"58\" width=\"120\" height=\"44\" fill=\"#F0F0EA\"/>\n  <circle cx=\"60\" cy=\"80\" r=\"16\" fill=\"#4A5C6A\"/>\n  <rect x=\"11.6\" y=\"135\" width=\"96.8\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"11.5\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Plain Ribbon</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">11</text>\n  <g transform=\"translate(17,26)\"><rect x=\"-5\" y=\"-2\" width=\"10\" height=\"4\" rx=\"2\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m12_bright": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#C2189B\"/>\n  <polygon points=\"51.0,40.8 60.0,21.4 69.0,40.8\" fill=\"#840F68\"/>\n  <polygon points=\"66.8,40.2 84.3,27.9 82.4,49.2\" fill=\"#840F68\"/>\n  <polygon points=\"80.8,47.6 102.1,45.7 89.8,63.2\" fill=\"#840F68\"/>\n  <polygon points=\"89.2,61.0 108.6,70.0 89.2,79.0\" fill=\"#840F68\"/>\n  <polygon points=\"89.8,76.8 102.1,94.3 80.8,92.4\" fill=\"#840F68\"/>\n  <polygon points=\"82.4,90.8 84.3,112.1 66.8,99.8\" fill=\"#840F68\"/>\n  <polygon points=\"69.0,99.2 60.0,118.6 51.0,99.2\" fill=\"#840F68\"/>\n  <polygon points=\"53.2,99.8 35.7,112.1 37.6,90.8\" fill=\"#840F68\"/>\n  <polygon points=\"39.2,92.4 17.9,94.3 30.2,76.8\" fill=\"#840F68\"/>\n  <polygon points=\"30.8,79.0 11.4,70.0 30.8,61.0\" fill=\"#840F68\"/>\n  <polygon points=\"30.2,63.2 17.9,45.7 39.2,47.6\" fill=\"#840F68\"/>\n  <polygon points=\"37.6,49.2 35.7,27.9 53.2,40.2\" fill=\"#840F68\"/>\n  <circle cx=\"60\" cy=\"70\" r=\"30\" fill=\"#FFE9B0\"/>\n  <rect x=\"23.6\" y=\"135\" width=\"72.8\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"14\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Phoenix</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">12</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-5 1.5,-1.5 5,-1.5 2,1 3,4.5 0,2.5 -3,4.5 -2,1 -5,-1.5 -1.5,-1.5\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m12_plain1": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#C2189B\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">12</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m12_plain2": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#C2189B\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">12</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m12_plain3": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#C2189B\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">12</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m1_bright": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#1B7F3B\"/>\n  <polygon points=\"51.0,40.8 60.0,21.4 69.0,40.8\" fill=\"#0E5526\"/>\n  <polygon points=\"69.9,41.0 88.6,30.7 84.5,51.7\" fill=\"#0E5526\"/>\n  <polygon points=\"85.0,52.4 106.2,55.0 90.6,69.6\" fill=\"#0E5526\"/>\n  <polygon points=\"90.6,70.4 106.2,85.0 85.0,87.6\" fill=\"#0E5526\"/>\n  <polygon points=\"84.5,88.3 88.6,109.3 69.9,99.0\" fill=\"#0E5526\"/>\n  <polygon points=\"69.0,99.2 60.0,118.6 51.0,99.2\" fill=\"#0E5526\"/>\n  <polygon points=\"50.1,99.0 31.4,109.3 35.5,88.3\" fill=\"#0E5526\"/>\n  <polygon points=\"35.0,87.6 13.8,85.0 29.4,70.4\" fill=\"#0E5526\"/>\n  <polygon points=\"29.4,69.6 13.8,55.0 35.0,52.4\" fill=\"#0E5526\"/>\n  <polygon points=\"35.5,51.7 31.4,30.7 50.1,41.0\" fill=\"#0E5526\"/>\n  <circle cx=\"60\" cy=\"70\" r=\"30\" fill=\"#FFF6E5\"/>\n  <polygon points=\"60,96 40,128 80,128\" fill=\"#FFF6E5\"/>\n  <rect x=\"27.5\" y=\"135\" width=\"65.0\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"17\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Crane</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">1</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-5 1.5,-1.5 5,-1.5 2,1 3,4.5 0,2.5 -3,4.5 -2,1 -5,-1.5 -1.5,-1.5\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m1_plain1": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#1B7F3B\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">1</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m1_plain2": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#1B7F3B\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">1</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m1_ribbon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#1B7F3B\"/>\n  <rect x=\"0\" y=\"58\" width=\"120\" height=\"44\" fill=\"#E33B3B\"/>\n  <rect x=\"37.0\" y=\"70\" width=\"46\" height=\"6\" rx=\"3\" fill=\"#FFF6E5\"/>\n  <rect x=\"43.0\" y=\"80\" width=\"34\" height=\"6\" rx=\"3\" fill=\"#FFF6E5\"/>\n  <rect x=\"40.0\" y=\"90\" width=\"40\" height=\"6\" rx=\"3\" fill=\"#FFF6E5\"/>\n  <rect x=\"8.1\" y=\"135\" width=\"103.7\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"11.5\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Poetry Ribbon</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">1</text>\n  <g transform=\"translate(17,26)\"><rect x=\"-5\" y=\"-2\" width=\"10\" height=\"4\" rx=\"2\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m2_animal": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#1F78B4\"/>\n  <polygon points=\"36.24,48.84 42.84,17.041199999999996 58.02,41.58\" fill=\"#025A96\"/>\n  <polygon points=\"83.75999999999999,48.84 77.16,17.041199999999996 61.98,41.58\" fill=\"#025A96\"/>\n  <circle cx=\"60\" cy=\"66\" r=\"33\" fill=\"#FFF6E5\"/>\n  <circle cx=\"48.120000000000005\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <circle cx=\"71.88\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <polygon points=\"60,79.86 54.39,71.94 65.61,71.94\" fill=\"#E0748A\"/>\n  <ellipse cx=\"46\" cy=\"118\" rx=\"16.5\" ry=\"9.3\" fill=\"#FFF6E5\"/>\n  <polygon points=\"62.5,118 75.7,108.1 75.7,127.9\" fill=\"#FFF6E5\"/>\n  <rect x=\"23.6\" y=\"135\" width=\"72.8\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"14\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Warbler</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">2</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-4.5 4.5,0 0,4.5 -4.5,0\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m2_plain1": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#1F78B4\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">2</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m2_plain2": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#1F78B4\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">2</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m2_ribbon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#1F78B4\"/>\n  <rect x=\"0\" y=\"58\" width=\"120\" height=\"44\" fill=\"#E33B3B\"/>\n  <rect x=\"37.0\" y=\"70\" width=\"46\" height=\"6\" rx=\"3\" fill=\"#FFF6E5\"/>\n  <rect x=\"43.0\" y=\"80\" width=\"34\" height=\"6\" rx=\"3\" fill=\"#FFF6E5\"/>\n  <rect x=\"40.0\" y=\"90\" width=\"40\" height=\"6\" rx=\"3\" fill=\"#FFF6E5\"/>\n  <rect x=\"8.1\" y=\"135\" width=\"103.7\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"11.5\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Poetry Ribbon</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">2</text>\n  <g transform=\"translate(17,26)\"><rect x=\"-5\" y=\"-2\" width=\"10\" height=\"4\" rx=\"2\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m3_bright": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#E8467C\"/>\n  <polygon points=\"51.0,42.8 60.0,23.4 69.0,42.8\" fill=\"#B01E52\"/>\n  <polygon points=\"74.3,44.9 94.4,37.6 87.1,57.7\" fill=\"#B01E52\"/>\n  <polygon points=\"89.2,63.0 108.6,72.0 89.2,81.0\" fill=\"#B01E52\"/>\n  <polygon points=\"87.1,86.3 94.4,106.4 74.3,99.1\" fill=\"#B01E52\"/>\n  <polygon points=\"69.0,101.2 60.0,120.6 51.0,101.2\" fill=\"#B01E52\"/>\n  <polygon points=\"45.7,99.1 25.6,106.4 32.9,86.3\" fill=\"#B01E52\"/>\n  <polygon points=\"30.8,81.0 11.4,72.0 30.8,63.0\" fill=\"#B01E52\"/>\n  <polygon points=\"32.9,57.7 25.6,37.6 45.7,44.9\" fill=\"#B01E52\"/>\n  <circle cx=\"60\" cy=\"72\" r=\"30\" fill=\"#FFF6E5\"/>\n  <rect x=\"0\" y=\"20\" width=\"120\" height=\"20\" fill=\"#FFF6E5\"/>\n  <rect x=\"23.6\" y=\"135\" width=\"72.8\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"14\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Curtain</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">3</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-5 1.5,-1.5 5,-1.5 2,1 3,4.5 0,2.5 -3,4.5 -2,1 -5,-1.5 -1.5,-1.5\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m3_plain1": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#E8467C\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">3</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m3_plain2": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#E8467C\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">3</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m3_ribbon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#E8467C\"/>\n  <rect x=\"0\" y=\"58\" width=\"120\" height=\"44\" fill=\"#E33B3B\"/>\n  <rect x=\"37.0\" y=\"70\" width=\"46\" height=\"6\" rx=\"3\" fill=\"#FFF6E5\"/>\n  <rect x=\"43.0\" y=\"80\" width=\"34\" height=\"6\" rx=\"3\" fill=\"#FFF6E5\"/>\n  <rect x=\"40.0\" y=\"90\" width=\"40\" height=\"6\" rx=\"3\" fill=\"#FFF6E5\"/>\n  <rect x=\"8.1\" y=\"135\" width=\"103.7\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"11.5\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Poetry Ribbon</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">3</text>\n  <g transform=\"translate(17,26)\"><rect x=\"-5\" y=\"-2\" width=\"10\" height=\"4\" rx=\"2\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m4_animal": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#7B3FB5\"/>\n  <polygon points=\"36.24,48.84 42.84,17.041199999999996 58.02,41.58\" fill=\"#52217F\"/>\n  <polygon points=\"83.75999999999999,48.84 77.16,17.041199999999996 61.98,41.58\" fill=\"#52217F\"/>\n  <circle cx=\"60\" cy=\"66\" r=\"33\" fill=\"#FFF6E5\"/>\n  <circle cx=\"48.120000000000005\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <circle cx=\"71.88\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <polygon points=\"60,79.86 54.39,71.94 65.61,71.94\" fill=\"#E0748A\"/>\n  <ellipse cx=\"46\" cy=\"118\" rx=\"16.5\" ry=\"9.3\" fill=\"#FFF6E5\"/>\n  <polygon points=\"62.5,118 75.7,108.1 75.7,127.9\" fill=\"#FFF6E5\"/>\n  <rect x=\"22.4\" y=\"135\" width=\"75.2\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"17\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Cuckoo</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">4</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-4.5 4.5,0 0,4.5 -4.5,0\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m4_plain1": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#7B3FB5\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">4</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m4_plain2": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#7B3FB5\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">4</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m4_ribbon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#7B3FB5\"/>\n  <rect x=\"0\" y=\"58\" width=\"120\" height=\"44\" fill=\"#F0F0EA\"/>\n  <circle cx=\"60\" cy=\"80\" r=\"16\" fill=\"#7B3FB5\"/>\n  <rect x=\"11.6\" y=\"135\" width=\"96.8\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"11.5\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Plain Ribbon</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">4</text>\n  <g transform=\"translate(17,26)\"><rect x=\"-5\" y=\"-2\" width=\"10\" height=\"4\" rx=\"2\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m5_animal": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#00A0A8\"/>\n  <polygon points=\"36.24,48.84 42.84,17.041199999999996 58.02,41.58\" fill=\"#00696F\"/>\n  <polygon points=\"83.75999999999999,48.84 77.16,17.041199999999996 61.98,41.58\" fill=\"#00696F\"/>\n  <circle cx=\"60\" cy=\"66\" r=\"33\" fill=\"#FFF6E5\"/>\n  <circle cx=\"48.120000000000005\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <circle cx=\"71.88\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <polygon points=\"60,79.86 54.39,71.94 65.61,71.94\" fill=\"#E0748A\"/>\n  <ellipse cx=\"46\" cy=\"118\" rx=\"16.5\" ry=\"9.3\" fill=\"#FFF6E5\"/>\n  <polygon points=\"62.5,118 75.7,108.1 75.7,127.9\" fill=\"#FFF6E5\"/>\n  <rect x=\"22.4\" y=\"135\" width=\"75.2\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"17\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Bridge</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">5</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-4.5 4.5,0 0,4.5 -4.5,0\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m5_plain1": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#00A0A8\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">5</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m5_plain2": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#00A0A8\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">5</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m5_ribbon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#00A0A8\"/>\n  <rect x=\"0\" y=\"58\" width=\"120\" height=\"44\" fill=\"#F0F0EA\"/>\n  <circle cx=\"60\" cy=\"80\" r=\"16\" fill=\"#00A0A8\"/>\n  <rect x=\"11.6\" y=\"135\" width=\"96.8\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"11.5\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Plain Ribbon</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">5</text>\n  <g transform=\"translate(17,26)\"><rect x=\"-5\" y=\"-2\" width=\"10\" height=\"4\" rx=\"2\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m6_animal": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#E03C31\"/>\n  <polygon points=\"36.24,48.84 42.84,17.041199999999996 58.02,41.58\" fill=\"#A2201A\"/>\n  <polygon points=\"83.75999999999999,48.84 77.16,17.041199999999996 61.98,41.58\" fill=\"#A2201A\"/>\n  <circle cx=\"60\" cy=\"66\" r=\"33\" fill=\"#FFF6E5\"/>\n  <circle cx=\"48.120000000000005\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <circle cx=\"71.88\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <polygon points=\"60,79.86 54.39,71.94 65.61,71.94\" fill=\"#E0748A\"/>\n  <polygon points=\"60,118 26,100 26,132\" fill=\"#FFF6E5\"/>\n  <polygon points=\"60,118 94,100 94,132\" fill=\"#FFF6E5\"/>\n  <rect x=\"15.2\" y=\"135\" width=\"89.6\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"14\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Butterfly</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">6</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-4.5 4.5,0 0,4.5 -4.5,0\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m6_plain1": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#E03C31\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">6</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m6_plain2": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#E03C31\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">6</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m6_ribbon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#E03C31\"/>\n  <rect x=\"0\" y=\"58\" width=\"120\" height=\"44\" fill=\"#2C5FD8\"/>\n  <polygon points=\"60,66 78,80 60,94 42,80\" fill=\"#FFF6E5\"/>\n  <rect x=\"15.1\" y=\"135\" width=\"89.9\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"11.5\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Blue Ribbon</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">6</text>\n  <g transform=\"translate(17,26)\"><rect x=\"-5\" y=\"-2\" width=\"10\" height=\"4\" rx=\"2\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m7_animal": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#A9741F\"/>\n  <polygon points=\"36.24,48.84 42.84,17.041199999999996 58.02,41.58\" fill=\"#714A0C\"/>\n  <polygon points=\"83.75999999999999,48.84 77.16,17.041199999999996 61.98,41.58\" fill=\"#714A0C\"/>\n  <circle cx=\"60\" cy=\"66\" r=\"33\" fill=\"#FFF6E5\"/>\n  <circle cx=\"48.120000000000005\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <circle cx=\"71.88\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <polygon points=\"60,79.86 54.39,71.94 65.61,71.94\" fill=\"#E0748A\"/>\n  <polygon points=\"44,108 34,128 54,124\" fill=\"#FFF6E5\"/>\n  <polygon points=\"76,108 86,128 66,124\" fill=\"#FFF6E5\"/>\n  <rect x=\"32.6\" y=\"135\" width=\"54.8\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"17\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Boar</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">7</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-4.5 4.5,0 0,4.5 -4.5,0\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m7_plain1": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#A9741F\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">7</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m7_plain2": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#A9741F\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">7</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m7_ribbon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#A9741F\"/>\n  <rect x=\"0\" y=\"58\" width=\"120\" height=\"44\" fill=\"#F0F0EA\"/>\n  <circle cx=\"60\" cy=\"80\" r=\"16\" fill=\"#A9741F\"/>\n  <rect x=\"11.6\" y=\"135\" width=\"96.8\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"11.5\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Plain Ribbon</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">7</text>\n  <g transform=\"translate(17,26)\"><rect x=\"-5\" y=\"-2\" width=\"10\" height=\"4\" rx=\"2\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m8_animal": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#2B3A67\"/>\n  <polygon points=\"36.24,48.84 42.84,17.041199999999996 58.02,41.58\" fill=\"#151E3C\"/>\n  <polygon points=\"83.75999999999999,48.84 77.16,17.041199999999996 61.98,41.58\" fill=\"#151E3C\"/>\n  <circle cx=\"60\" cy=\"66\" r=\"33\" fill=\"#FFF6E5\"/>\n  <circle cx=\"48.120000000000005\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <circle cx=\"71.88\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <polygon points=\"60,79.86 54.39,71.94 65.61,71.94\" fill=\"#E0748A\"/>\n  <ellipse cx=\"46\" cy=\"118\" rx=\"16.5\" ry=\"9.3\" fill=\"#FFF6E5\"/>\n  <polygon points=\"62.5,118 75.7,108.1 75.7,127.9\" fill=\"#FFF6E5\"/>\n  <rect x=\"27.5\" y=\"135\" width=\"65.0\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"17\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Geese</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">8</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-4.5 4.5,0 0,4.5 -4.5,0\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m8_bright": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#2B3A67\"/>\n  <circle cx=\"60\" cy=\"68\" r=\"34\" fill=\"#FFEFA8\"/>\n  <circle cx=\"60\" cy=\"68\" r=\"34\" fill=\"#FFEFA8\"/>\n  <rect x=\"32.6\" y=\"135\" width=\"54.8\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"17\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Moon</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">8</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-5 1.5,-1.5 5,-1.5 2,1 3,4.5 0,2.5 -3,4.5 -2,1 -5,-1.5 -1.5,-1.5\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m8_plain1": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#2B3A67\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">8</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m8_plain2": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#2B3A67\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">8</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m9_animal": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#F2A007\"/>\n  <polygon points=\"36.24,48.84 42.84,17.041199999999996 58.02,41.58\" fill=\"#B06E00\"/>\n  <polygon points=\"83.75999999999999,48.84 77.16,17.041199999999996 61.98,41.58\" fill=\"#B06E00\"/>\n  <circle cx=\"60\" cy=\"66\" r=\"33\" fill=\"#FFF6E5\"/>\n  <circle cx=\"48.120000000000005\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <circle cx=\"71.88\" cy=\"63.36\" r=\"4.29\" fill=\"#22201E\"/>\n  <polygon points=\"60,79.86 54.39,71.94 65.61,71.94\" fill=\"#E0748A\"/>\n  <rect x=\"34\" y=\"104\" width=\"52\" height=\"26\" rx=\"6\" fill=\"#FFF6E5\"/>\n  <rect x=\"19.4\" y=\"135\" width=\"81.2\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"14\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Sake Cup</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">9</text>\n  <g transform=\"translate(17,26)\"><polygon points=\"0,-4.5 4.5,0 0,4.5 -4.5,0\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m9_plain1": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#F2A007\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">9</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m9_plain2": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#F2A007\"/>\n  <circle cx=\"21.1\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"33.2\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"46.8\" cy=\"41.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"58.9\" cy=\"46.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"40\" cy=\"67.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"61.1\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <circle cx=\"73.2\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"86.8\" cy=\"85.5\" r=\"6.1\" fill=\"#FFF6E5\"/>\n  <circle cx=\"98.9\" cy=\"90.5\" r=\"5.8\" fill=\"#FFF6E5\"/>\n  <ellipse cx=\"80\" cy=\"111.4\" rx=\"20.2\" ry=\"16.9\" fill=\"#FFF6E5\"/>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">9</text>\n  <g transform=\"translate(17,26)\"><circle r=\"3\" fill=\"#FFF6E5\"/></g>\n</svg>",
+  "m9_ribbon": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 160\">\n  <rect width=\"120\" height=\"160\" rx=\"10\" fill=\"#F2A007\"/>\n  <rect x=\"0\" y=\"58\" width=\"120\" height=\"44\" fill=\"#2C5FD8\"/>\n  <polygon points=\"60,66 78,80 60,94 42,80\" fill=\"#FFF6E5\"/>\n  <rect x=\"15.1\" y=\"135\" width=\"89.9\" height=\"23\" rx=\"11\" fill=\"black\" fill-opacity=\"0.34\"/>\n  <text x=\"60\" y=\"147\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"11.5\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">Blue Ribbon</text>\n  <circle cx=\"17\" cy=\"17\" r=\"14\" fill=\"black\" fill-opacity=\"0.32\"/>\n  <text x=\"17\" y=\"15\" font-family=\"system-ui,Arial,sans-serif\" font-size=\"13\" font-weight=\"800\" fill=\"#FFF6E5\" text-anchor=\"middle\" dominant-baseline=\"middle\">9</text>\n  <g transform=\"translate(17,26)\"><rect x=\"-5\" y=\"-2\" width=\"10\" height=\"4\" rx=\"2\" fill=\"#FFF6E5\"/></g>\n</svg>"
+};const cardImgCache = {};
 
 function cardImgName(card){
   if(card.t==='bright') return `m${card.m}_bright`;
@@ -753,14 +1133,37 @@ function cardImgName(card){
   // plain — нужен стабильный номер (1/2/3) для конкретной карты месяца
   return `m${card.m}_plain${card.plainIdx||1}`;
 }
+// Папка с картинками карт. Файлы здесь ПЕРЕКРЫВАЮТ встроенные —
+// можно подменять карты по одной, остальные останутся рисованными.
+const CARD_IMG_BASE = 'cards/';
+// Расширения, которые ищутся по очереди. Хочешь заменить на растр —
+// просто положи cards/m1_bright.png, менять код не нужно.
+const CARD_IMG_EXT = ['png','jpg','svg'];
+
+function embedSrc(name){
+  const src=CARD_SVG[name];
+  return src ? 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(src) : null;
+}
+
 function getCardImg(card){
   const name=cardImgName(card);
   if(!cardImgCache[name]){
-    const img=new Image();
-    img.src=CARD_IMG_BASE+name+'.svg';
-    img.onload=()=>draw();
-    cardImgCache[name]={img,loaded:false};
-    img.onload=()=>{cardImgCache[name].loaded=true;draw();};
+    const entry={img:new Image(),loaded:false};
+    cardImgCache[name]=entry;
+    let i=0;
+    const tryNext=()=>{
+      if(i<CARD_IMG_EXT.length){
+        entry.img.src=CARD_IMG_BASE+name+'.'+CARD_IMG_EXT[i++];
+        return;
+      }
+      // Внешнего файла нет — берём встроенный рисунок
+      const fb=embedSrc(name);
+      if(fb){ entry.img.onerror=null; entry.img.src=fb; }
+      else console.warn('нет спрайта для карты:',name);
+    };
+    entry.img.onload=()=>{entry.loaded=true;draw();};
+    entry.img.onerror=tryNext;
+    tryNext();
   }
   return cardImgCache[name];
 }
@@ -932,17 +1335,17 @@ function drawCapSummary(){
   const cap=G.pCap;
   const has=(m,sub,t)=>cap.some(c=>c.m===m&&(!sub||c.sub===sub)&&(!t||c.t===t));
   const rows=[
-    {label:'3 игрушки',items:[
-      {n:'Мышка м.7',ok:has(7,'boar')},{n:'Рыбка м.10',ok:has(10,'deer')},{n:'Мяч м.6',ok:has(6,'butterfly')}]},
-    {label:'Красн. бантики',items:[
-      {n:'Бант м.1',ok:has(1,'poetry')},{n:'Бант м.2',ok:has(2,'poetry')},{n:'Бант м.3',ok:has(3,'poetry')}]},
-    {label:'Синие бантики',items:[
-      {n:'Бант м.6',ok:has(6,'blue')},{n:'Бант м.9',ok:has(9,'blue')},{n:'Бант м.10',ok:has(10,'blue')}]},
-    {label:'Короны',items:[
-      {n:'Корона м.1',ok:has(1,null,'bright')},{n:'Корона м.3',ok:has(3,null,'bright')},
-      {n:'Корона м.8',ok:has(8,null,'bright')},{n:'Корона м.11',ok:has(11,null,'bright')},{n:'Корона м.12',ok:has(12,null,'bright')}]},
-    {label:'С миской',items:[
-      {n:'Корона м.3',ok:has(3,null,'bright')},{n:'Корона м.8',ok:has(8,null,'bright')},{n:'Миска м.9',ok:has(9,'sake')}]},
+    {label:'Ino-Shika-Cho',items:[
+      {n:'7 Boar',ok:has(7,'boar')},{n:'10 Deer',ok:has(10,'deer')},{n:'6 Butterfly',ok:has(6,'butterfly')}]},
+    {label:'Akatan',items:[
+      {n:'1 Poetry',ok:has(1,'poetry')},{n:'2 Poetry',ok:has(2,'poetry')},{n:'3 Poetry',ok:has(3,'poetry')}]},
+    {label:'Aotan',items:[
+      {n:'6 Blue',ok:has(6,'blue')},{n:'9 Blue',ok:has(9,'blue')},{n:'10 Blue',ok:has(10,'blue')}]},
+    {label:'Brights',items:[
+      {n:'1 Crane',ok:has(1,null,'bright')},{n:'3 Curtain',ok:has(3,null,'bright')},
+      {n:'8 Moon',ok:has(8,null,'bright')},{n:'11 Rain Man',ok:has(11,null,'bright')},{n:'12 Phoenix',ok:has(12,null,'bright')}]},
+    {label:'Sake yaku',items:[
+      {n:'3 Curtain',ok:has(3,null,'bright')},{n:'8 Moon',ok:has(8,null,'bright')},{n:'9 Sake',ok:has(9,'sake')}]},
   ];
   ct.fillStyle='rgba(0,0,0,.38)';ct.fillRect(4,YPROG-2,W-8,158);
   ct.fillStyle='rgba(201,162,39,.5)';ct.font='bold 10px Georgia';
@@ -1023,6 +1426,40 @@ function drawRoundOver(){
   }
 }
 
+// ── Экран журнала партий ────────────────────────────────────────
+let ACTION_FLASH=null; // 'download'|'copy'|'clear' — кратковременная подсветка кнопки
+function drawEventLogScreen(){
+  ct.fillStyle='#0a0603';ct.fillRect(0,0,W,H);
+  ct.textAlign='center';
+  ct.fillStyle='#c9a227';ct.font='bold 20px Georgia';ct.textBaseline='top';
+  ct.fillText('Журнал событий',W/2,18);
+  ct.fillStyle='rgba(255,255,255,.4)';ct.font='11px Georgia';
+  ct.fillText('хранится в этом браузере, между устройствами не синхронизируется',W/2,44);
+
+  const count=eventLogCount();
+  ct.fillStyle='rgba(255,255,255,.85)';ct.font='16px Georgia';ct.textBaseline='middle';
+  ct.fillText(count?`Записано событий: ${count}`:'Журнал пуст — сыграйте партию',W/2,H/2-70);
+  ct.fillStyle='rgba(255,255,255,.4)';ct.font='11px Georgia';
+  ct.fillText('каждое решение ИИ — со всеми рассмотренными вариантами и их оценками',W/2,H/2-46);
+
+  const bw=260,bh=38,bx=(W-bw)/2;
+  const rows=[
+    {key:'download',label:ACTION_FLASH==='download'?'✓ ФАЙЛ СКАЧАН':'⬇️ СКАЧАТЬ JSON',y:H/2-10,color:'#c9a227'},
+    {key:'copy',label:ACTION_FLASH==='copy'?'✓ СКОПИРОВАНО':'📋 СКОПИРОВАТЬ JSON',y:H/2+34,color:'#c9a227'},
+    {key:'clear',label:ACTION_FLASH==='clear'?'✓ ОЧИЩЕНО':'🗑 ОЧИСТИТЬ ЖУРНАЛ',y:H/2+78,color:'#c04040'},
+  ];
+  rows.forEach(r=>{
+    const flash=ACTION_FLASH===r.key;
+    ct.strokeStyle=flash?'#70e870':r.color;ct.lineWidth=2;
+    ct.beginPath();rr(bx,r.y,bw,bh,8);ct.stroke();
+    ct.fillStyle=flash?'#70e870':r.color;ct.font='bold 14px Georgia';
+    ct.fillText(r.label,W/2,r.y+bh/2);
+  });
+
+  ct.fillStyle='#c9a227';ct.font='bold 15px Georgia';ct.textBaseline='bottom';
+  ct.fillText('[ НАЗАД ]',W/2,H-24);
+}
+
 function drawOverlay(){
   ct.fillStyle='rgba(4,2,1,.9)';ct.fillRect(0,0,W,H);
   ct.textAlign='center';
@@ -1043,18 +1480,18 @@ function drawOverlay(){
     ct.fillStyle='#d4b896';ct.font='11px Georgia';
     ct.textAlign='left';
     const yakuList=[
-      ['3 короны','3 короны 👑 (без особой)','5 оч'],
-      ['4 короны','4 короны 👑 (без особой)','8 оч'],
-      ['4 короны+','4 короны 👑 (с особой)','7 оч'],
-      ['5 корон','все 5 корон 👑','10 оч'],
-      ['3 игрушки','мяч + рыбка + мышка (опред.)','5 оч'],
-      ['Красные бантики','3 красных бантика 🎀','5 оч'],
-      ['Синие бантики','3 синих бантика 🎀','5 оч'],
-      ['С миской 1','корона 👑 + миска еды','5 оч'],
-      ['С миской 2','другая корона 👑 + миска еды','5 оч'],
-      ['Игрушки','5+ карт-игрушек','+1 за каждую сверх 4'],
-      ['Бантики','5+ бантиков (любых)','+1 за каждую сверх 4'],
-      ['Лапки','10+ карт-лапок','+1 за каждую сверх 9'],
+      ['Sanko','3 Brights, excluding Rain Man','5 pts'],
+      ['Shiko','4 Brights, excluding Rain Man','8 pts'],
+      ['Ame-Shiko','4 Brights, including Rain Man','7 pts'],
+      ['Goko','all 5 Brights','10 pts'],
+      ['Ino-Shika-Cho','Boar + Deer + Butterfly','5 pts'],
+      ['Akatan','3 Poetry Ribbons (#1,2,3)','5 pts'],
+      ['Aotan','3 Blue Ribbons (#6,9,10)','5 pts'],
+      ['Hanami-zake','Curtain (#3) + Sake Cup','3 pts'],
+      ['Tsukimi-zake','Moon (#8) + Sake Cup','3 pts'],
+      ['Tane','5+ Animal cards','+1 each beyond 4'],
+      ['Tan','5+ Ribbon cards (any)','+1 each beyond 4'],
+      ['Kasu','10+ Chaff cards','+1 each beyond 9'],
     ];
     const lx=16; // растянуто до левого края canvas
     const rx=W-16; // правый край
@@ -1088,6 +1525,13 @@ function drawOverlay(){
       ct.beginPath();rr(bx,by2,bw,bh,8);ct.stroke();
       ct.fillStyle=contActive?'#70e870':'rgba(255,255,255,.22)';
       ct.fillText('ПРОДОЛЖИТЬ ИГРУ',W/2,by2+bh/2);
+      // Кнопка "Журнал партий"
+      const by3=by2+bh+14;
+      ct.strokeStyle='rgba(255,255,255,.5)';ct.lineWidth=2;
+      ct.beginPath();rr(bx,by3,bw,bh,8);ct.stroke();
+      ct.fillStyle='rgba(255,255,255,.8)';ct.font='bold 13px Georgia';
+      ct.fillText('ЖУРНАЛ СОБЫТИЙ',W/2,by3+bh/2);
+      ct.font='bold 15px Georgia';
       ct.textBaseline='bottom';
     }
   }else{
@@ -1101,18 +1545,30 @@ cv.addEventListener('click',e=>{
   const mx=(e.clientX-rect.left)*(W/rect.width);
   const my=(e.clientY-rect.top)*(H/rect.height);
 
-  // Кнопки сложности в шапке
-  const _bw=70,_gap=5,_total=4*(_bw+_gap)-_gap,_bx0=(W-_total)/2;
-  for(let d=0;d<4;d++){
-    const bx=_bx0+d*(_bw+_gap);
-    if(mx>=bx&&mx<=bx+_bw&&my>=34&&my<=54){DIFF=d+1;draw();return;}
+  if(G.phase==='log'){
+    const bw=260,bh=38,bx=(W-bw)/2;
+    const flash=(key)=>{ ACTION_FLASH=key; draw(); setTimeout(()=>{ACTION_FLASH=null;draw();},1200); };
+    if(mx>=bx&&mx<=bx+bw&&my>=H/2-10&&my<=H/2-10+bh){ downloadEventLog(); flash('download'); return; }
+    if(mx>=bx&&mx<=bx+bw&&my>=H/2+34&&my<=H/2+34+bh){ copyEventLogToClipboard(()=>flash('copy')); return; }
+    if(mx>=bx&&mx<=bx+bw&&my>=H/2+78&&my<=H/2+78+bh){ clearEventLog(); flash('clear'); return; }
+    G.phase='start'; draw(); return; // клик мимо кнопок — назад
   }
-  // Кнопка подсказки
-  if(mx>=W-40&&mx<=W-6&&my>=4&&my<=28){ useHint(); return; }
+
+  // Шапка (сложность, подсказка) не рисуется на start/gameover — не перехватываем клики там
+  if(G.phase!=='start'&&G.phase!=='gameover'){
+    const _bw=70,_gap=5,_total=4*(_bw+_gap)-_gap,_bx0=(W-_total)/2;
+    for(let d=0;d<4;d++){
+      const bx=_bx0+d*(_bw+_gap);
+      if(mx>=bx&&mx<=bx+_bw&&my>=34&&my<=54){DIFF=d+1;draw();return;}
+    }
+    if(mx>=W-40&&mx<=W-6&&my>=4&&my<=28){ useHint(); return; }
+  }
+
   if(G.phase==='start'){
     if(TG_USER && !SYNC_DONE){ return; } // ждём ответа сервера — клики игнорируем
     const bw=220,bx=(W-bw)/2,bh=38;
-    const by1=H-186, by2=H-134;
+    const by1=H-186, by2=H-134, by3=by2+bh+14;
+    if(mx>=bx&&mx<=bx+bw&&my>=by3&&my<=by3+bh){ G.phase='log'; draw(); return; }
     if(mx>=bx&&mx<=bx+bw&&my>=by2&&my<=by2+bh){
       if(SAVED_GAME){
         G=SAVED_GAME; SAVED_GAME=null;
