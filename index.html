@@ -290,9 +290,10 @@ function persistState(){
   },800);
 }
 
+const TARGET_SCORE=30; // партия идёт до этого счёта, не до фикс. числа раундов
 function newGame(){
-  G={phase:'start',round:1,rounds:6,scores:[0,0],dealer:'player'};
-  logEvent('game_start',{diff:DIFF,rounds:6});
+  G={phase:'start',round:1,targetScore:TARGET_SCORE,scores:[0,0],dealer:'player'};
+  logEvent('game_start',{diff:DIFF,targetScore:TARGET_SCORE});
   newRound();
 }
 
@@ -706,6 +707,9 @@ function isDeadCard(card,counts,table){
   return (4-(counts[card.m]||0))<=0 && !table.some(t=>t.m===card.m);
 }
 // Учёт собственной руки: чем сбрасываем и что после этого остаётся.
+// Вес регрета за отдачу «живой» карты — в тех же портфельных очках,
+// что и весь остальной расчёт (см. ниже, было −unseen×1.6).
+const HAND_SYNERGY_REGRET_WEIGHT=9;
 function handSynergy(action){
   if(action.handIndex==null) return 0;
   const counts=seenMonthCounts();
@@ -716,7 +720,11 @@ function handSynergy(action){
     const pairOnTable=G.table.some(t=>t.m===action.card.m);
     if(unseen<=0&&!pairOnTable) v+=8.5;                      // сбросили труп — отлично
     else{
-      v-=unseen*1.6;                                         // живую карту отдавать жалко
+      // Раньше здесь стоял грубый -unseen*1.6, забивавший тонкий портфельный
+      // расчёт в трети решений (см. GAME-STATE.md, «Известная проблема»).
+      // Теперь используем ту же cardVal, что и весь остальной портфель —
+      // согласованная шкала вместо конкурирующей.
+      v-=cardVal(action.card,G.aCap)*HAND_SYNERGY_REGRET_WEIGHT;
       if(rest.some(c=>c.m===action.card.m)) v-=3.6;          // рвём свою пару
     }
   }
@@ -898,15 +906,17 @@ function aiShouldKoiKoi(pts){
     logEvent('ai_koikoi_decision',{round:G.round,diff:DIFF,pts,threat:+threat.toFixed(2),near:+near.toFixed(2),decision:d?'koikoi':'stop'});
     return d;
   }
-  // Expert: решение по матожиданию с поправкой на положение в матче
+  // Expert: решение по матожиданию с поправкой на положение в матче.
+  // Матч теперь идёт до targetScore очков, а не фикс. числа раундов —
+  // «конец матча» определяем как приближение чьего-либо счёта к цели.
   const ev=expertKoiEV(pts);
   const lead=G.scores[1]-G.scores[0];
-  const roundsLeft=G.rounds-G.round;
+  const nearMatchEnd=Math.max(G.scores[0],G.scores[1])>=G.targetScore*0.7;
   let d;
-  if(lead>10&&roundsLeft<=1&&pts>=2) d=false;        // ведём под конец — фиксируем
-  else if(lead<-10&&roundsLeft<=1)   d=ev>-4;         // догоняем — рискуем шире
+  if(lead>10&&nearMatchEnd&&pts>=2) d=false;        // ведём под конец — фиксируем
+  else if(lead<-10&&nearMatchEnd)   d=ev>-4;         // догоняем — рискуем шире
   else                                d=ev>0;
-  logEvent('ai_koikoi_decision',Object.assign({round:G.round,diff:DIFF,pts,ev:+ev.toFixed(2),lead,roundsLeft},LAST_KOI_BREAKDOWN,{decision:d?'koikoi':'stop'}));
+  logEvent('ai_koikoi_decision',Object.assign({round:G.round,diff:DIFF,pts,ev:+ev.toFixed(2),lead,nearMatchEnd},LAST_KOI_BREAKDOWN,{decision:d?'koikoi':'stop'}));
   return d;
 }
 
@@ -1010,7 +1020,7 @@ function endRound(winner,pts){
     }
   }
   logEvent('round_end',{round:G.round,winner:roundWinner,pts:roundPts,yaku:roundYaku,scores:[...G.scores]});
-  if(G.round>=G.rounds){
+  if(G.scores[0]>=G.targetScore||G.scores[1]>=G.targetScore){
     G.phase='gameover';
     const result=G.scores[0]>G.scores[1]?'win':(G.scores[0]<G.scores[1]?'lose':'draw');
     saveMatchResult(result,G.scores[0],G.scores[1]);
@@ -1215,16 +1225,16 @@ function drawHeader(){
   ct.fillStyle='#f0e8d0';ct.textAlign='left';
   ct.fillText(`ВЫ:  ${G.scores[0]} очков`,18,30);
   ct.fillStyle='#c9a227';ct.textAlign='center';
-  ct.fillText(`— Раунд ${G.round} из ${G.rounds} —`,W/2,30);
+  ct.fillText(`— Раунд ${G.round}, до ${G.targetScore} очков —`,W/2,30);
   ct.fillStyle='#c04040';ct.textAlign='right';
   ct.fillText(`ИИ:  ${G.scores[1]} очков`,W-18,30);
   ct.font='12px Georgia';
   if(G.turn==='player'&&G.phase==='select'){ct.fillStyle='#80d060';ct.textAlign='left';ct.fillText('▶ ваш ход',18,48);}
   else if(G.turn==='ai'){ct.fillStyle='#c06060';ct.textAlign='right';ct.fillText('ИИ думает ▶',W-18,48);}
   if(G.koiKoi||G.aKoiKoi){ct.fillStyle='#c9a227';ct.textAlign='center';ct.fillText('★ Мяу-Мяу в игре!',W/2+80,48);}
-  // Кнопки сложности: Easy / Normal / Hard / Expert
+  // Кнопки сложности: Easy / Normal / Hard / Мастер
   const dlabels=['1','2','3','4'];
-  const dnames=['Easy','Normal','Hard','Expert'];
+  const dnames=['Easy','Normal','Hard','Мастер'];
   const bw=70,bh=20,gap=5,totalW=4*(bw+gap)-gap;
   const bx0=(W-totalW)/2;
   dlabels.forEach((lbl,d)=>{
@@ -1420,7 +1430,7 @@ function drawRoundOver(){
   ct.fillText(G.msg,W/2,H/2-34);
   ct.fillStyle='#d4b896';ct.font='17px Georgia';
   ct.fillText(`Общий счёт:  ВЫ ${G.scores[0]}  :  ИИ ${G.scores[1]}`,W/2,H/2+8);
-  if(G.round<G.rounds){
+  if(G.scores[0]<G.targetScore&&G.scores[1]<G.targetScore){
     ct.fillStyle='#c9a227';ct.font='bold 14px Georgia';
     ct.fillText('[ нажмите — следующий раунд ]',W/2,H/2+50);
   }
