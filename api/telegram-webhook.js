@@ -5,6 +5,14 @@
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).json({ ok: true });
 
+  // Без этой проверки кто угодно, зная URL, мог прислать поддельный
+  // successful_payment и начислить себе звёзды без реальной оплаты.
+  // Секрет задаётся один раз через Telegram API (см. api/TODO-security.md).
+  const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (!WEBHOOK_SECRET || req.headers['x-telegram-bot-api-secret-token'] !== WEBHOOK_SECRET) {
+    return res.status(401).json({ ok: false });
+  }
+
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
   const BOT_TOKEN = process.env.BOT_TOKEN;

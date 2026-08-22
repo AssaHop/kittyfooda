@@ -41,6 +41,21 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const { result, game_state } = req.body || {};
 
+      // Ограничиваем произвольный JSON от клиента: без этого можно было
+      // залить в jsonb-колонку сколь угодно большой/неожиданный блоб.
+      const MAX_GAME_STATE_BYTES = 20 * 1024;
+      if (game_state !== undefined && game_state !== null) {
+        if (typeof game_state !== 'object' || Array.isArray(game_state)) {
+          return res.status(400).json({ error: 'game_state must be an object or null' });
+        }
+        if (Buffer.byteLength(JSON.stringify(game_state), 'utf8') > MAX_GAME_STATE_BYTES) {
+          return res.status(400).json({ error: 'game_state too large' });
+        }
+      }
+      if (result !== undefined && !['win', 'lose', 'draw'].includes(result)) {
+        return res.status(400).json({ error: 'invalid result' });
+      }
+
       // username берём из подписанных данных, а не из тела
       let patch = { telegram_id: telegramId, username };
 

@@ -6,7 +6,7 @@
 
 import crypto from 'crypto';
 
-const MAX_AGE_SECONDS = 60 * 60 * 24; // 24 часа — защита от повторного использования
+const MAX_AGE_SECONDS = 60 * 60; // 1 час — защита от повторного использования перехваченной initData
 
 /**
  * @returns {{ok:true, user:object, telegramId:number} | {ok:false, error:string}}
