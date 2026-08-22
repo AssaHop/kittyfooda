@@ -15,7 +15,7 @@ body{
   background:radial-gradient(ellipse at 50% 0,#1a0e06,#060402 70%);
   display:flex;flex-direction:column;align-items:center;
   justify-content:center;gap:12px;
-  padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom));
+  padding:max(12px,var(--tg-safe-top,0px),env(safe-area-inset-top)) 12px max(12px,var(--tg-safe-bottom,0px),env(safe-area-inset-bottom));
   font-family:Georgia,serif;color:#e8d5b0;
 }
 h1{font-size:clamp(16px,4vw,24px);letter-spacing:6px;
@@ -37,6 +37,10 @@ if(window.Telegram && window.Telegram.WebApp){
   const tg=window.Telegram.WebApp;
   tg.ready();
   tg.expand();
+  // expand() разворачивает только до "невсплывающей" высоты, шапка Telegram
+  // остаётся видна. Настоящий edge-to-edge fullscreen — отдельный метод,
+  // появился в Bot API 8.0, есть не у всех клиентов — поэтому с проверкой.
+  if(tg.requestFullscreen) try{tg.requestFullscreen();}catch(e){}
   if(tg.disableVerticalSwipes) tg.disableVerticalSwipes();
   if(tg.setHeaderColor) try{tg.setHeaderColor('#060402');}catch(e){}
   if(tg.setBackgroundColor) try{tg.setBackgroundColor('#060402');}catch(e){}
@@ -44,8 +48,18 @@ if(window.Telegram && window.Telegram.WebApp){
     document.documentElement.style.setProperty('--tg-viewport-stable-height',
       (tg.viewportStableHeight||window.innerHeight)+'px');
   };
-  applyVh();
+  // В fullscreen-режиме своей шапки Telegram больше нет, но появляется
+  // плавающая кнопка сворачивания сверху и, возможно, вырез/чёлка устройства —
+  // contentSafeAreaInset/safeAreaInset сообщают, сколько отступить от края.
+  const applySafeArea=()=>{
+    const sa=tg.contentSafeAreaInset||tg.safeAreaInset||{};
+    document.documentElement.style.setProperty('--tg-safe-top',(sa.top||0)+'px');
+    document.documentElement.style.setProperty('--tg-safe-bottom',(sa.bottom||0)+'px');
+  };
+  applyVh();applySafeArea();
   tg.onEvent('viewportChanged',applyVh);
+  tg.onEvent('safeAreaChanged',applySafeArea);
+  tg.onEvent('contentSafeAreaChanged',applySafeArea);
 }
 
 // ── Сохранение прогресса через бэкенд (Vercel + Supabase) ────────
