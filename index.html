@@ -41,6 +41,9 @@ if(window.Telegram && window.Telegram.WebApp){
   // остаётся видна. Настоящий edge-to-edge fullscreen — отдельный метод,
   // появился в Bot API 8.0, есть не у всех клиентов — поэтому с проверкой.
   if(tg.requestFullscreen) try{tg.requestFullscreen();}catch(e){}
+  // ВРЕМЕННО, для диагностики: показывает версию клиента Telegram и
+  // поддержку fullscreen прямо во всплывающем окне — убрать после проверки.
+  if(tg.showAlert) tg.showAlert('TG WebApp v'+tg.version+' | fullscreen: '+(tg.requestFullscreen?'есть':'нет')+' | isFullscreen: '+tg.isFullscreen);
   if(tg.disableVerticalSwipes) tg.disableVerticalSwipes();
   if(tg.setHeaderColor) try{tg.setHeaderColor('#060402');}catch(e){}
   if(tg.setBackgroundColor) try{tg.setBackgroundColor('#060402');}catch(e){}
