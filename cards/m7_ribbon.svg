@@ -1,17 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160">
-<rect width="120" height="160" rx="10" fill="#FDBF6F"/>
-<rect x="3" y="3" width="114" height="154" rx="8" fill="none" stroke="#1a1a1a" stroke-width="4"/>
-
-    <circle cx="60" cy="70" r="34" fill="#ffffffee" stroke="#00000033" stroke-width="2"/>
-    <polygon points="34,50 42,20 54,42" fill="#c87000" stroke="#00000033" stroke-width="2"/>
-    <polygon points="86,50 78,20 66,42" fill="#c87000" stroke="#00000033" stroke-width="2"/>
-    <ellipse cx="38" cy="62" rx="10" ry="14" fill="#c87000" opacity="0.85"/>
-    <circle cx="48" cy="68" r="4" fill="#222"/>
-    <circle cx="72" cy="68" r="4" fill="#222"/>
-    <polygon points="60,86 55,79 65,79" fill="#e08a9a"/>
-    
-<path d="M60,100 L35,85 L35,115 Z" fill="#cc60cc" stroke="#00000033" stroke-width="2"/>
-    <path d="M60,100 L85,85 L85,115 Z" fill="#cc60cc" stroke="#00000033" stroke-width="2"/>
-    <circle cx="60" cy="100" r="7" fill="#cc60cc" stroke="#00000033" stroke-width="2"/>
-<text x="60" y="148" font-family="Georgia,serif" font-size="11" fill="#000000aa" text-anchor="middle">m7 ▬</text>
+  <rect width="120" height="160" rx="10" fill="#A9741F"/>
+  <rect x="0" y="58" width="120" height="44" fill="#F0F0EA"/>
+  <circle cx="60" cy="80" r="16" fill="#A9741F"/>
+  <rect x="11.6" y="135" width="96.8" height="23" rx="11" fill="black" fill-opacity="0.34"/>
+  <text x="60" y="147" font-family="system-ui,Arial,sans-serif" font-size="11.5" font-weight="800" fill="#FFF6E5" text-anchor="middle" dominant-baseline="middle">Plain Ribbon</text>
+  <circle cx="17" cy="17" r="14" fill="black" fill-opacity="0.32"/>
+  <text x="17" y="15" font-family="system-ui,Arial,sans-serif" font-size="13" font-weight="800" fill="#FFF6E5" text-anchor="middle" dominant-baseline="middle">7</text>
+  <g transform="translate(17,26)"><rect x="-5" y="-2" width="10" height="4" rx="2" fill="#FFF6E5"/></g>
 </svg>

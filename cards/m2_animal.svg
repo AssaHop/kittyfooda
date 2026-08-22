@@ -1,15 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160">
-<rect width="120" height="160" rx="10" fill="#1F78B4"/>
-<rect x="3" y="3" width="114" height="154" rx="8" fill="none" stroke="#1a1a1a" stroke-width="4"/>
-
-    <circle cx="60" cy="70" r="34" fill="#ffffffee" stroke="#00000033" stroke-width="2"/>
-    <polygon points="34,50 42,20 54,42" fill="#025a96" stroke="#00000033" stroke-width="2"/>
-    <polygon points="86,50 78,20 66,42" fill="#025a96" stroke="#00000033" stroke-width="2"/>
-    <ellipse cx="38" cy="62" rx="10" ry="14" fill="#025a96" opacity="0.85"/>
-    <circle cx="48" cy="68" r="4" fill="#222"/>
-    <circle cx="72" cy="68" r="4" fill="#222"/>
-    <polygon points="60,86 55,79 65,79" fill="#e08a9a"/>
-    
-<ellipse cx="60" cy="100" rx="18" ry="10" fill="#7ab8d9" stroke="#2d5a73" stroke-width="2"/><polygon points="78,100 90,92 90,108" fill="#7ab8d9" stroke="#2d5a73" stroke-width="2"/>
-<text x="60" y="148" font-family="Georgia,serif" font-size="11" fill="#000000aa" text-anchor="middle">m2 ♦</text>
+  <rect width="120" height="160" rx="10" fill="#1F78B4"/>
+  <polygon points="36.24,48.84 42.84,17.041199999999996 58.02,41.58" fill="#025A96"/>
+  <polygon points="83.75999999999999,48.84 77.16,17.041199999999996 61.98,41.58" fill="#025A96"/>
+  <circle cx="60" cy="66" r="33" fill="#FFF6E5"/>
+  <circle cx="48.120000000000005" cy="63.36" r="4.29" fill="#22201E"/>
+  <circle cx="71.88" cy="63.36" r="4.29" fill="#22201E"/>
+  <polygon points="60,79.86 54.39,71.94 65.61,71.94" fill="#E0748A"/>
+  <ellipse cx="46" cy="118" rx="16.5" ry="9.3" fill="#FFF6E5"/>
+  <polygon points="62.5,118 75.7,108.1 75.7,127.9" fill="#FFF6E5"/>
+  <rect x="23.6" y="135" width="72.8" height="23" rx="11" fill="black" fill-opacity="0.34"/>
+  <text x="60" y="147" font-family="system-ui,Arial,sans-serif" font-size="14" font-weight="800" fill="#FFF6E5" text-anchor="middle" dominant-baseline="middle">Warbler</text>
+  <circle cx="17" cy="17" r="14" fill="black" fill-opacity="0.32"/>
+  <text x="17" y="15" font-family="system-ui,Arial,sans-serif" font-size="13" font-weight="800" fill="#FFF6E5" text-anchor="middle" dominant-baseline="middle">2</text>
+  <g transform="translate(17,26)"><polygon points="0,-4.5 4.5,0 0,4.5 -4.5,0" fill="#FFF6E5"/></g>
 </svg>
