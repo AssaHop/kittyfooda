@@ -180,18 +180,28 @@ const W=450,H=800;
 cv.width=W;cv.height=H;
 
 // ── Размеры карт ─────────────────────────────────────────────────
-const CW=48,CH=72,CG=7; // было 44×66 — увеличено, текст на картах теперь читаем
-const HX=(W-(8*(CW+CG)-CG)>>1)|0;  // start x player/AI hand (~25)
-const TX=(W-(5*(CW+CG)-CG)>>1)|0;  // start x table, 5 cols (~101)
+// 2026-08-23: макет переработан целиком — рука игрока в 2 ряда с
+// сортировкой по месяцу (см. playerHandLayout), рука ИИ упакована
+// плотно внахлёст в один ряд, колода переехала наверх рядом с рукой
+// ИИ (над столом). Карты чуть крупнее (44×66 → 48×72 → 50×74): текст
+// и номер месяца — часть готового SVG, растянутого на CW×CH, крупнее
+// карта = крупнее текст, CARD_SVG отдельно менять не нужно.
+// Фон под стол НЕ ужат до 2 рядов, как в первой версии этой правки —
+// проверено headless-симуляцией (sim_koi_lib.js): за 40 партий стол
+// реально доходил до 11 карт (частичный 3-й ряд), так что запас на
+// 3 ряда — не лишний буфер, а нужный минимум.
+const CW=50,CH=74,CG=6;
+const HX=10;                         // общий левый отступ (рука ИИ, подписи)
+const TX=(W-(5*(CW+CG)-CG))>>1;      // start x стола, 5 колонок
 
 // ── Y-координаты зон ─────────────────────────────────────────────
-const YAI  = 72;   // AI cards top
-const YTAB = 155;  // Table row 1 top
-const YCAP = 388;  // Captured summary line
+const YAI  = 64;   // AI cards + колода top
+const YTAB = 142;  // Table row 1 top (фон — честный запас на 3 ряда, см. drawTable)
+const YCAP = 386;  // Captured summary line
 const YPROG= 412;  // Yaku progress panel
-const YPH  = 576;  // Player hand top
-const YMSG = 660;  // Message bar
-const YBTN = 718;  // Choice buttons
+const YPH  = 546;  // Player hand top (2 ряда — см. playerHandLayout)
+const YMSG = 706;  // Message bar
+const YBTN = 762;  // Choice buttons
 
 // ── Месяцы ───────────────────────────────────────────────────────
 const MON=[
@@ -1246,10 +1256,13 @@ function drawHeader(){
   ct.font='bold 16px Georgia';ct.textBaseline='middle';
   ct.fillStyle='#f0e8d0';ct.textAlign='left';
   ct.fillText(`ВЫ:  ${G.scores[0]} очков`,18,30);
-  ct.fillStyle='#c9a227';ct.textAlign='center';
-  ct.fillText(`— Раунд ${G.round}, до ${G.targetScore} очков —`,W/2,30);
   ct.fillStyle='#c04040';ct.textAlign='right';
   ct.fillText(`ИИ:  ${G.scores[1]} очков`,W-18,30);
+  // Меньше кегль — иначе на трёхзначном счёте текст залезает на счёт
+  // игроков по обе стороны (было измерено: 16px здесь давал реальное
+  // наложение уже при счёте «0», не только визуально казалось).
+  ct.font='bold 13px Georgia';ct.fillStyle='#c9a227';ct.textAlign='center';
+  ct.fillText(`— Раунд ${G.round}, до ${G.targetScore} очков —`,W/2,30);
   ct.font='12px Georgia';
   if(G.turn==='player'&&G.phase==='select'){ct.fillStyle='#80d060';ct.textAlign='left';ct.fillText('▶ ваш ход',18,48);}
   else if(G.turn==='ai'){ct.fillStyle='#c06060';ct.textAlign='right';ct.fillText('ИИ думает ▶',W-18,48);}
@@ -1279,27 +1292,33 @@ function drawHeader(){
   ct.fillText(hintsOwned>0?`💡${hintsOwned}`:'💡',hbx+hbw/2,hby+hbh/2);
 }
 
+// Рука ИИ — плотно внахлёст в один ряд (карты рубашкой вверх, читать
+// на них всё равно нечего; экономит горизонтальное место под колоду).
+const AI_GAP = Math.round(CW*0.4);
 function drawAIHand(){
   ct.fillStyle='rgba(255,255,255,.3)';ct.font='13px Georgia';
   ct.textAlign='left';ct.textBaseline='top';
-  ct.fillText(`Рука ИИ:  ${G.aHand.length} карт`,HX,62);
+  ct.fillText(`Рука ИИ:  ${G.aHand.length} карт`,HX,YAI-14);
   G.aHand.forEach((_,i)=>{
     const hl=i===G.aiHL;
+    const x=HX+i*AI_GAP;
     if(hl){ct.save();ct.shadowColor='rgba(255,120,60,.9)';ct.shadowBlur=22;}
     // Подсвеченная карта показывается лицом вверх
     // showFace=true только когда карта подсвечена И известна (лицом вверх)
     const showFace=hl&&!!G.aiCard;
-    drawCard(HX+i*(CW+CG),YAI+(hl?-14:0), showFace?G.aiCard:null, showFace);
+    drawCard(x,YAI+(hl?-14:0), showFace?G.aiCard:null, showFace);
     if(hl){
       ct.strokeStyle='rgba(255,150,60,.9)';ct.lineWidth=3;
-      ct.strokeRect(HX+i*(CW+CG)-2,YAI-16,CW+4,CH+4);
+      ct.strokeRect(x-2,YAI-16,CW+4,CH+4);
       ct.restore();
     }
   });
 }
 
 function drawTable(){
-  ct.fillStyle='rgba(0,0,0,.25)';ct.fillRect(TX-8,YTAB-22,5*(CW+CG)+6,3*(CH+CG)+30);
+  // 3 ряда — не лишний буфер: headless-прогонами подтверждено, что стол
+  // реально доходит до 11 карт (5+5+1) за партию, не только до 8.
+  ct.fillStyle='rgba(0,0,0,.25)';ct.fillRect(TX-8,YTAB-16,5*(CW+CG)+6,3*(CH+CG)+16);
   ct.fillStyle='rgba(255,255,255,.3)';ct.font='13px Georgia';
   ct.textAlign='left';ct.textBaseline='top';
   ct.fillText(`На столе:  ${G.table.length} карт`,TX,YTAB-18);
@@ -1317,21 +1336,25 @@ function drawTable(){
   });
 }
 
+// Колода — рядом с рукой ИИ (тот же ряд, справа), над столом. Раньше
+// стояла справа от стола — по просьбе пользователя перенесена наверх,
+// ближе к оппоненту, вместо середины поля.
 function drawDeck(){
-  const dx=TX+5*(CW+CG)+10, dy=YTAB+CH/2-CG;
+  const dx=W-HX-CW, dy=YAI;
   ct.fillStyle='rgba(255,255,255,.25)';ct.font='13px Georgia';
   ct.textAlign='center';ct.textBaseline='bottom';
   ct.fillText('Колода',dx+CW/2,dy-4);
 
-  // Превью карты из колоды (во время хода ИИ)
+  // Превью карты из колоды (во время хода ИИ) — слева от колоды,
+  // в том же ряду (сверху места нет — там шапка с кнопками сложности).
   if(G.aiPreview){
-    drawCard(dx,dy-CH-14,G.aiPreview,true,false);
-    // Стрелка вниз
+    const px=dx-CW-16;
+    drawCard(px,dy,G.aiPreview,true,false);
     ct.strokeStyle='rgba(255,200,80,.8)';ct.lineWidth=2;ct.setLineDash([5,4]);
-    ct.beginPath();ct.moveTo(dx+CW/2,dy-12);ct.lineTo(dx+CW/2,dy-2);ct.stroke();
+    ct.beginPath();ct.moveTo(px+CW+2,dy+CH/2);ct.lineTo(dx-4,dy+CH/2);ct.stroke();
     ct.setLineDash([]);
     ct.fillStyle='rgba(255,200,80,.8)';
-    ct.beginPath();ct.moveTo(dx+CW/2,dy);ct.lineTo(dx+CW/2-6,dy-10);ct.lineTo(dx+CW/2+6,dy-10);ct.closePath();ct.fill();
+    ct.beginPath();ct.moveTo(dx-2,dy+CH/2);ct.lineTo(dx-12,dy+CH/2-6);ct.lineTo(dx-12,dy+CH/2+6);ct.closePath();ct.fill();
   }
 
   if(G.deck.length>0){
@@ -1379,16 +1402,16 @@ function drawCapSummary(){
     {label:'Sake yaku',items:[
       {n:'3 Curtain',ok:has(3,null,'bright')},{n:'8 Moon',ok:has(8,null,'bright')},{n:'9 Sake',ok:has(9,'sake')}]},
   ];
-  ct.fillStyle='rgba(0,0,0,.38)';ct.fillRect(4,YPROG-2,W-8,158);
-  ct.fillStyle='rgba(201,162,39,.5)';ct.font='bold 10px Georgia';
+  ct.fillStyle='rgba(0,0,0,.38)';ct.fillRect(4,YPROG-2,W-8,130);
+  ct.fillStyle='rgba(201,162,39,.6)';ct.font='bold 11px Georgia';
   ct.textAlign='center';ct.textBaseline='top';
   ct.fillText('── прогресс к яку ──',W/2,YPROG+1);
-  const RH=28,LW=110;
+  const RH=22,LW=110;
   rows.forEach((row,ri)=>{
     const ry=YPROG+16+ri*RH;
     const done=row.items.every(i=>i.ok);
     ct.fillStyle=done?'#70e870':'#c9a227';
-    ct.font='bold 10px Georgia';ct.textAlign='left';ct.textBaseline='middle';
+    ct.font='bold 12px Georgia';ct.textAlign='left';ct.textBaseline='middle';
     ct.fillText(row.label+':',8,ry+RH/2);
     const iw=Math.floor((W-HX-LW-8)/row.items.length);
     row.items.forEach((item,ii)=>{
@@ -1399,29 +1422,56 @@ function drawCapSummary(){
   });
 }
 
+// Рука игрока — 2 ряда, отсортированные по месяцу для читаемости.
+// ВАЖНО: сам G.pHand не переупорядочивается (это ломало бы индексы,
+// на которые завязаны G.sel/hintActive/playerPlay/splice) — сортировка
+// только для расчёта позиций на экране; исходный индекс `i` сохраняется
+// и используется как раньше. Используется и здесь, и в обработчике
+// клика (см. cv.addEventListener) — одна и та же геометрия для отрисовки
+// и хит-теста, чтобы они не могли разойтись.
+function playerHandLayout(){
+  const n=G.pHand.length;
+  if(!n) return [];
+  const cols=Math.max(1,Math.ceil(n/2));
+  const rowW=cols*(CW+CG)-CG;
+  const startX=(W-rowW)>>1;
+  return G.pHand
+    .map((card,i)=>({card,i}))
+    .sort((a,b)=>a.card.m-b.card.m||(a.i-b.i))
+    .map((e,idx)=>({
+      card:e.card, i:e.i,
+      x:startX+(idx%cols)*(CW+CG),
+      y:YPH+Math.floor(idx/cols)*(CH+CG)
+    }));
+}
 function drawPlayerHand(){
   ct.fillStyle='rgba(255,255,255,.3)';ct.font='13px Georgia';
-  ct.textAlign='left';ct.textBaseline='top';
-  ct.fillText('Ваша рука:',HX,YPH-20);
-  G.pHand.forEach((card,i)=>{
+  ct.textAlign='center';ct.textBaseline='top';
+  ct.fillText('Ваша рука (по месяцам):',W/2,YPH-18);
+  playerHandLayout().forEach(({card,i,x,y})=>{
     const sel=G.sel===i&&(G.phase==='select'||G.phase==='choose');
-    drawCard(HX+i*(CW+CG),YPH+(sel?-10:0),card,true,sel);
+    const yy=y+(sel?-10:0);
+    drawCard(x,yy,card,true,sel);
     if(hintActive===i){
-      const x=HX+i*(CW+CG),y=YPH+(sel?-10:0);
       ct.save();ct.strokeStyle='rgba(80,220,255,.95)';ct.lineWidth=3;
       ct.shadowColor='rgba(80,220,255,.9)';ct.shadowBlur=16;
-      ct.strokeRect(x-3,y-3,CW+6,CH+6);ct.restore();
+      ct.strokeRect(x-3,yy-3,CW+6,CH+6);ct.restore();
     }
   });
 }
 
 function drawMsgBar(){
-  ct.fillStyle='rgba(0,0,0,.6)';ct.fillRect(0,YMSG,W,58);
-  ct.fillStyle='#f0d878';ct.font='bold 15px Georgia';
+  ct.fillStyle='rgba(0,0,0,.6)';ct.fillRect(0,YMSG,W,52);
+  // Длина G.msg сильно гуляет (короткие статусы vs. длинные подписи вида
+  // "Выбрана карта: месяц N, тип X. Нажмите снова для хода.") — 17px
+  // на длинных строках вылезал за левый край холста (проверено скриншотом
+  // при выборе карты), поэтому кегль подбирается по факту, не фиксирован.
+  const longMsg=G.msg.length>34;
+  ct.fillStyle='#f0d878';ct.font=(longMsg?'bold 13px':'bold 16px')+' Georgia';
   ct.textAlign='center';ct.textBaseline='middle';
-  ct.fillText(G.msg,W/2,YMSG+20);
+  ct.fillText(G.msg,W/2,YMSG+18);
   ct.fillStyle='#6a5830';ct.font='11px Georgia';
-  ct.fillText('👑=20оч  🧸=10оч  🎀=5оч  🐾=1оч    |    Яку: Короны·Игрушки·Бантики·С миской',W/2,YMSG+42);
+  ct.fillText('👑=20оч  🧸=10оч  🎀=5оч  🐾=1оч    |    Яку: Короны·Игрушки·Бантики·С миской',W/2,YMSG+38);
 }
 
 function mkbtn(x,y,w,h,label,bg,bc){
@@ -1440,9 +1490,9 @@ function rr(x,y,w,h,r){
 function drawChoiceBtns(){
   ct.fillStyle='rgba(255,255,255,.3)';ct.font='13px Georgia';
   ct.textAlign='center';ct.textBaseline='top';
-  ct.fillText('Выберите:',W/2,YBTN-22);
-  mkbtn(14,YBTN,W/2-20,36,'✋  СТОП','#1a4a10','#50b030');
-  mkbtn(W/2+6,YBTN,W/2-20,36,'🐱  МЯУ-МЯУ','#4a1010','#c04040');
+  ct.fillText('Выберите:',W/2,YBTN-18);
+  mkbtn(14,YBTN,W/2-20,34,'✋  СТОП','#1a4a10','#50b030');
+  mkbtn(W/2+6,YBTN,W/2-20,34,'🐱  МЯУ-МЯУ','#4a1010','#c04040');
 }
 
 function drawRoundOver(){
@@ -1636,11 +1686,11 @@ cv.addEventListener('click',e=>{
   }
 
   if((G.phase==='select')&&G.turn==='player'){
-    for(let i=0;i<G.pHand.length;i++){
-      const x=HX+i*(CW+CG), y=YPH+(G.sel===i?-10:0);
-      if(mx>=x&&mx<=x+CW&&my>=y-6&&my<=y+CH+6){
+    for(const {card,i,x,y} of playerHandLayout()){
+      const yy=y+(G.sel===i?-10:0);
+      if(mx>=x&&mx<=x+CW&&my>=yy-6&&my<=yy+CH+6){
         if(G.sel===i){ playerPlay(i); }
-        else{ G.sel=i; G.msg=`Выбрана карта: месяц ${G.pHand[i].m}, тип ${G.pHand[i].t}.  Нажмите снова для хода.`; draw(); }
+        else{ G.sel=i; G.msg=`Выбрана карта: месяц ${card.m}, тип ${card.t}.  Нажмите снова для хода.`; draw(); }
         return;
       }
     }
