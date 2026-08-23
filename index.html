@@ -442,7 +442,10 @@ function playerResolveCapture(targetId){
   const option=p.options.find(o=>o.includes(targetId));
   if(!option) return;
   if(p.kind==='hand') G.pHand.splice(p.handIndex,1);
+  const captured=G.table.filter(c=>option.includes(c.id));
   const n=applyCapture(p.card,G.pCap,option);
+  logEvent(p.kind==='hand'?'player_move':'player_draw',
+    {round:G.round,card:cardDesc(p.card),captured:handDesc(captured),ambiguousChoice:true,hand:handDesc(G.pHand)});
   G.pendingCapture=null;G.aiTargets=[];G.msg=captureLabel(n,p.card);G.phase='wait';draw();
   if(p.kind==='hand') setTimeout(playerDraw,500);
   else setTimeout(finishPlayerTurn,350);
@@ -454,7 +457,9 @@ function playerPlay(idx){
   const opts=captureOptions(card);
   if(opts.length===2){beginPlayerCaptureChoice(card,'hand',idx,opts);return;}
   G.pHand.splice(idx,1);
+  const captured=G.table.filter(c=>opts[0].includes(c.id));
   const n=applyCapture(card,G.pCap,opts[0]);
+  logEvent('player_move',{round:G.round,card:cardDesc(card),captured:handDesc(captured),hand:handDesc(G.pHand)});
   G.msg=captureLabel(n,card);G.phase='wait';draw();setTimeout(playerDraw,500);
 }
 function playerDraw(){
@@ -466,7 +471,9 @@ function playerDraw(){
     G.aiPreview=null;G.aiTargets=[];G.deck.pop();
     const opts=captureOptions(card);
     if(opts.length===2){beginPlayerCaptureChoice(card,'draw',-1,opts);return;}
+    const captured=G.table.filter(c=>opts[0].includes(c.id));
     const n=applyCapture(card,G.pCap,opts[0]);
+    logEvent('player_draw',{round:G.round,card:cardDesc(card),captured:handDesc(captured),hand:handDesc(G.pHand)});
     G.msg=n?`Из колоды: захват ${n} карты месяца ${card.m}`:'Из колоды: карта на стол';draw();
     setTimeout(finishPlayerTurn,350);
   },650);
@@ -482,8 +489,9 @@ function finishPlayerTurn(){
   aiTurnStart();
 }
 function playerChoose(stop){
+  const base=yakuPts(G.currentYaku||getYaku(G.pCap));
+  logEvent('player_koikoi',{round:G.round,pts:base,decision:stop?'stop':'koikoi'});
   if(stop){
-    const base=yakuPts(G.currentYaku||getYaku(G.pCap));
     endRound('player',scoredPoints(base));
   }else{
     G.koiKoi=true;G.phase='wait';G.msg='Мяу-Мяу! Продолжаем...';
