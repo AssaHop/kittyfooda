@@ -410,7 +410,7 @@ function newRound(){
   G={...G,phase:'wait',turn:dealer,sel:null,aiCard:null,
     deck:deck.slice(24),pHand:deck.slice(0,8),aHand:deck.slice(8,16),table:deck.slice(16,24),
     pCap:[],aCap:[],prevPts:0,aPrevPts:0,prevYakuKey:'',aPrevYakuKey:'',
-    koiKoi:false,aKoiKoi:false,currentYaku:[],
+    koiKoi:false,aKoiKoi:false,aKoiCount:0,currentYaku:[],
     aiHL:-1,aiTargets:[],aiPreview:null,pendingCapture:null,
     msg:dealer==='player'?'Ваш ход — выберите карту из руки':'Дилер ИИ ходит первым...'};
   if(dealer==='player') G.phase='select';
@@ -944,11 +944,18 @@ function aiShouldKoiKoi(pts){
   const ev=expertKoiEV(pts);
   const lead=G.scores[1]-G.scores[0];
   const nearMatchEnd=Math.max(G.scores[0],G.scores[1])>=G.targetScore*0.7;
+  // Мягкий кап на число коикои подряд за раунд — не меняет сам EV-расчёт,
+  // только поднимает планку для каждого следующего коикои в этом раунде.
+  // Жертвуем немного EV ради предсказуемости для игрока (см. GAME-STATE.md
+  // §5.1 — ужесточение общего порога уже проверялось и не давало эффекта
+  // на win-rate; это другое — эскалация только внутри одного раунда).
+  const koiCount=G.aKoiCount||0;
+  const escalation=koiCount>=2?3:(koiCount>=1?1:0);
   let d;
-  if(lead>10&&nearMatchEnd&&pts>=2) d=false;        // ведём под конец — фиксируем
-  else if(lead<-10&&nearMatchEnd)   d=ev>-4;         // догоняем — рискуем шире
-  else                                d=ev>0;
-  logEvent('ai_koikoi_decision',Object.assign({round:G.round,diff:DIFF,pts,ev:+ev.toFixed(2),lead,nearMatchEnd},LAST_KOI_BREAKDOWN,{decision:d?'koikoi':'stop'}));
+  if(lead>10&&nearMatchEnd&&pts>=2) d=false;               // ведём под конец — фиксируем
+  else if(lead<-10&&nearMatchEnd)   d=ev>-4+escalation;    // догоняем — рискуем шире, но тоже осторожнее с каждым разом
+  else                                d=ev>escalation;
+  logEvent('ai_koikoi_decision',Object.assign({round:G.round,diff:DIFF,pts,ev:+ev.toFixed(2),lead,nearMatchEnd,koiCount,escalation},LAST_KOI_BREAKDOWN,{decision:d?'koikoi':'stop'}));
   return d;
 }
 
@@ -1004,7 +1011,7 @@ function finishAiTurn(){
     if(!aiShouldKoiKoi(pts)){
       G.msg=`ИИ: яку ${pts}, СТОП!`;draw();setTimeout(()=>endRound('ai',scoredPoints(pts)),900);return;
     }
-    G.aKoiKoi=true;G.msg=`🐱 ИИ говорит МЯУ-МЯУ! (${pts} оч.)`;
+    G.aKoiKoi=true;G.aKoiCount=(G.aKoiCount||0)+1;G.msg=`🐱 ИИ говорит МЯУ-МЯУ! (${pts} оч.)`;
     showKoiKoiPopup('ai',passToPlayer);return;
   }
   if(!G.pHand.length&&!G.aHand.length){endRound();return;}
