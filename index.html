@@ -603,11 +603,11 @@ function brightValue(cap,side){
   // заранее, войдёт ли в набор именно дождь.
   return lerpTable(E,[[0,0],[3,5],[4,7.5],[5,10]]);
 }
-function progressiveValue(pool,cap,side){
+function progressiveValue(pool,cap,side,threshold){
   const owned=pool.filter(id=>cap.some(c=>c.id===id)).length;
   let E=owned;
   for(const id of pool) if(!cap.some(c=>c.id===id)) E+=cardProb(id,side);
-  return Math.max(0,E-4); // по 1 очку за каждую сверх четырёх — как в getYaku
+  return Math.max(0,E-threshold); // порог должен совпадать с реальным getYaku (см. вызовы)
 }
 // Полная ожидаемая стоимость портфеля одной стороны в очках яку.
 function portfolioValue(cap,side){
@@ -617,9 +617,9 @@ function portfolioValue(cap,side){
        + fixedSetValue(POOL_HANAMI,3,cap,side)
        + fixedSetValue(POOL_TSUKIMI,3,cap,side)
        + brightValue(cap,side)
-       + progressiveValue(POOL_RIBBON,cap,side)
-       + progressiveValue(POOL_ANIMAL,cap,side)
-       + progressiveValue(POOL_PLAIN,cap,side);
+       + progressiveValue(POOL_RIBBON,cap,side,4)  // Тан×N: порог 5 карт (N-4)
+       + progressiveValue(POOL_ANIMAL,cap,side,4)  // Тане×N: порог 5 карт (N-4)
+       + progressiveValue(POOL_PLAIN,cap,side,9);  // Касу×N: порог 10 карт (N-9) — было ошибочно -4
 }
 // Ценность карты для собственного портфеля ИИ — насколько её взятие
 // поднимает ожидаемую сумму очков.
