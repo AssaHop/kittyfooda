@@ -738,6 +738,23 @@ function seenMonthCounts(){
 function isDeadCard(card,counts,table){
   return (4-(counts[card.m]||0))<=0 && !table.some(t=>t.m===card.m);
 }
+// Насколько срочно забирать карту СО СТОЛА прямо сейчас, а не откладывать.
+// Не хардкод «всё видно/не видно» — гипергеометрическая оценка через уже
+// существующие unknownCount()/G.pHand.length, тот же принцип, что и весь
+// остальной портфель. unseen — сколько карт этого месяца ещё нигде не
+// видны (могут быть и в колоде, и в руке игрока) — 0 значит гарантированно
+// не у игрока (см. пример: 2 карты месяца в руке ИИ + 2 на столе — все 4
+// учтены, риска нет вообще). При unseen>0 оцениваем вероятность, что ХОТЯ
+// БЫ ОДНА из непросмотренных карт этого месяца лежит именно в руке
+// игрока (а не в колоде) — если так, он может перехватить эту же карту
+// на своём ходу раньше, чем мы вернёмся к этому месяцу.
+function oppMightSnipeMonth(month,counts){
+  const unseen=4-(counts[month]||0);
+  if(unseen<=0) return 0;
+  const U=Math.max(1,unknownCount());
+  const pShare=G.pHand.length/U; // доля руки игрока в общей неизвестной массе
+  return 1-Math.pow(1-pShare,unseen);
+}
 // Учёт собственной руки: чем сбрасываем и что после этого остаётся.
 // Вес регрета за отдачу «живой» карты — в тех же портфельных очках,
 // что и весь остальной расчёт (см. ниже, было −unseen×1.6).
@@ -771,10 +788,36 @@ function handSynergy(action){
 // метрика «близости» — она уже зашита в портфельный diff, как в тесте
 // с саке при занавесе+луне у игрока), а выпуклый бонус усиливает именно
 // такие случаи ещё сильнее сверх линейного веса.
+// Премия за срочность блокировки: ожидаемая потеря, если отложить этот
+// захват — вероятность, что игрок перехватит карту (oppMightSnipeMonth),
+// умноженная на то, сколько мы теряем, если она всё-таки уйдёт к нему
+// (blockingValueFor). Гарантированные захваты (месяц весь учтён — не
+// срочно, можно взять и позже) премии не получают.
+// Проверено headless-прогоном (см. GAME-STATE.md §5.2): на weight=1
+// N=300 дал 52.7% (слабый плюс), на weight=2 N=300 дал 49.3% (шум) —
+// эффект не масштабируется с весом, значит шум, не сигнал. Формула
+// остаётся (концептуально обоснована, переиспользует существующие
+// cardProb-подобные оценки), но выключена по умолчанию.
+const CAPTURE_URGENCY_WEIGHT=0;
+function captureUrgencyBonus(a){
+  const taken=captureCardsFor(a);
+  if(!taken.length) return 0;
+  const counts=seenMonthCounts();
+  // Чем раньше в раздаче, тем больше ещё будет ходов (своих и чужих) —
+  // и у игрока больше шансов со временем добрать недостающую карту месяца
+  // из колоды (не только из уже розданной руки), и у нас будет меньше
+  // оставшихся возможностей вернуться за этой картой позже. Оценка снипа
+  // выше — «здесь и сейчас», без проекции будущих раздач; масштабируем
+  // премию по оставшемуся времени раздачи (gamePhase), с нижним полом —
+  // риск не обнуляется целиком даже в самом конце.
+  const timeLeft=Math.max(0.3,1-gamePhase());
+  return taken.reduce((s,c)=>s+oppMightSnipeMonth(c.m,counts)*blockingValueFor(c,G.pCap),0)*timeLeft;
+}
 function expertBaseScore(a){
   const phase=gamePhase();
   const def=defensiveGain(a);
   let s=immediateGain(a,G.aCap)+def*1.5+Math.max(0,def-2)*1.3;
+  s+=captureUrgencyBonus(a)*CAPTURE_URGENCY_WEIGHT;
   if(G.koiKoi) s+=def*0.6;
   if(phase>0.65) s+=def*0.35;
   return s+handSynergy(a);
@@ -851,6 +894,7 @@ function aiChooseCaptureIds(card){
     else if(DIFF===4){                                    // Expert — тот же принцип, что в expertBaseScore
       const def=defensiveGain(a);
       s+=def*1.5+Math.max(0,def-2)*1.3;
+      s+=captureUrgencyBonus(a)*CAPTURE_URGENCY_WEIGHT; // та же премия за срочность, что и в expertBaseScore — иначе двойной стандарт между обычным ходом и неоднозначным захватом из колоды
     }
     if(s>bs){bs=s;best=ids;bi=i;}
     return {captureIds:ids.map(id=>{const c=G.table.find(t=>t.id===id);return c?cardDesc(c):null;}),score:+s.toFixed(3)};
