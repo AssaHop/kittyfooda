@@ -794,7 +794,15 @@ function handSynergy(action){
       if(rest.some(c=>c.m===action.card.m)) v-=3.6;          // рвём свою пару
     }
   }
-  for(const c of rest) if(isDeadCard(c,counts,G.table)) v-=3.2;
+  // Стол ПОСЛЕ этого хода, не текущий — иначе карта, которая мертвеет
+  // именно из-за ЭТОГО захвата (забрали последнюю карту месяца X со
+  // стола, а в руке осталась ещё одна карта месяца X), не штрафуется
+  // на ход раньше, чем должна: counts[month] сама сумма по всем зонам
+  // не меняется от перекладывания карты между зонами, а вот наличие
+  // карты месяца именно НА СТОЛЕ — меняется, и isDeadCard смотрит
+  // именно на это.
+  const tableAfter=simulateTableAfter(action);
+  for(const c of rest) if(isDeadCard(c,counts,tableAfter)) v-=3.2;
   return v;
 }
 // Базовая оценка Expert. Отдельно от hardActionScore, чтобы веса
