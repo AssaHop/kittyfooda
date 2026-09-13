@@ -246,7 +246,14 @@ function buildDeck(){
   });
   return d;
 }
-let DIFF=3; // 1 Easy, 2 Normal, 3 Hard, 4 Expert
+const DIFF_STORAGE_KEY='kittyfooda_diff';
+let DIFF=(()=>{
+  try{
+    const saved=parseInt(localStorage.getItem(DIFF_STORAGE_KEY),10);
+    if(saved>=1&&saved<=4) return saved;
+  }catch(e){}
+  return 3;
+})(); // 1 Easy, 2 Normal, 3 Hard, 4 Expert — запоминается между сессиями
 
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=0|Math.random()*(i+1);[a[i],a[j]]=[a[j],a[i]];}}
 
@@ -765,12 +772,47 @@ function isDeadCard(card,counts,table){
 // БЫ ОДНА из непросмотренных карт этого месяца лежит именно в руке
 // игрока (а не в колоде) — если так, он может перехватить эту же карту
 // на своём ходу раньше, чем мы вернёмся к этому месяцу.
+// «Копящиеся» карты — входят хотя бы в один фиксированный высокоценный
+// пул (яркие / Ино-Сика-Тё / Ака-тан / Ао-тан / Ханами / Цукими). По
+// наблюдению пользователя за собственной игрой (см. GAME-STATE.md §5.6):
+// реальный игрок держит такие карты в руке и не сбрасывает первыми —
+// в отличие от общих Тан/Тане/Касу-карт, которые сбрасывает при
+// отсутствии лучшего хода. Следствие для вероятностной модели: если
+// карта такого типа нигде не видна, у неё выше шанс СИДЕТЬ в руке
+// игрока прямо сейчас, чем нетронутой лежать в колоде — низкоценную же,
+// наоборот, скорее уже сыграли или она ещё не вытянута.
+const HOARD_POOL_IDS=new Set([
+  ...POOL_BRIGHT,...POOL_INO,...POOL_AKATAN,...POOL_AOTAN,
+  ...POOL_HANAMI,...POOL_TSUKIMI,
+]);
+function isHoardType(card){return HOARD_POOL_IDS.has(card.id);}
+// Множитель доли «в руке игрока, а не в колоде» для карт из HOARD_POOL_IDS.
+// Было 1 (выключено); включено на 1.5 (2026-09-13) — бэктест по 73
+// реальным раундам пользователя (см. GAME-STATE.md §5.6) подтвердил
+// гипотезу настолько чисто, насколько это вообще бывает на реальных
+// данных: среди ходов БЕЗ захвата (чистый добровольный выбор, чем
+// пожертвовать) копящиеся карты сбрасывались в среднем на ходу 7.44,
+// обычные — на 4.84 (z≈10.6, n=9 копящихся сбросов против 106 обычных
+// за 73 раунда). 1.5 — не строгая калибровка этого числа (единицы
+// разные: тенюр в ходах vs доля «в руке»), а разумная стартовая точка
+// для игровой проверки. Self-play её не проверит (см. комментарий
+// внутри `oppMightSnipeMonth` выше и GAME-STATE.md §5.6) — единственная
+// проверка — реальные партии. Чтобы сравнить с/без коррекции, просто
+// верните сюда 1 на время нескольких партий и сравните ощущения/итог.
+const HOARD_BIAS_MULT=1.5;
 function oppMightSnipeMonth(month,counts){
   const unseen=4-(counts[month]||0);
   if(unseen<=0) return 0;
   const U=Math.max(1,unknownCount());
-  const pShare=G.pHand.length/U; // доля руки игрока в общей неизвестной массе
-  return 1-Math.pow(1-pShare,unseen);
+  const baseShare=G.pHand.length/U; // доля руки игрока в общей неизвестной массе
+  const known=new Set([...G.aHand,...G.table,...G.aCap,...G.pCap].map(c=>c.id));
+  const unseenCards=REF_DECK.filter(c=>c.m===month&&!known.has(c.id));
+  let pNone=1;
+  for(const c of unseenCards){
+    const share=Math.min(0.97,baseShare*(isHoardType(c)?HOARD_BIAS_MULT:1));
+    pNone*=(1-share);
+  }
+  return 1-pNone;
 }
 // Учёт собственной руки: чем сбрасываем и что после этого остаётся.
 // Вес регрета за отдачу «живой» карты — в тех же портфельных очках,
@@ -802,9 +844,30 @@ function handSynergy(action){
   // карты месяца именно НА СТОЛЕ — меняется, и isDeadCard смотрит
   // именно на это.
   const tableAfter=simulateTableAfter(action);
-  for(const c of rest) if(isDeadCard(c,counts,tableAfter)) v-=3.2;
+  for(const c of rest){
+    if(isDeadCard(c,counts,tableAfter)) v-=3.2;
+    // Ещё формально не мертва (isDeadCard бинарна: «все 4 учтены» —
+    // иначе штрафа нет вообще), но если недостающий экземпляр её месяца
+    // скорее всего именно у игрока (а не в колоде) — она рискует либо
+    // остаться сиротой, либо при вынужденном будущем сбросе тут же
+    // уйти игроку тем же ходом. Переиспользуем oppMightSnipeMonth/
+    // blockingValueFor (см. §5.2) — тот же принцип, что и премия за
+    // срочность захвата, но с другой стороны хода: не «стоит ли забрать
+    // со стола сейчас», а «чем рискует карта, которую я оставляю в руке
+    // при ЭТОМ конкретном ходе». Не хардкод — общая переоценка любой
+    // ещё живой карты в hand, не только участника текущего неоднозначного
+    // захвата.
+    else v-=oppMightSnipeMonth(c.m,counts)*blockingValueFor(c,G.pCap)*HAND_EXPOSURE_WEIGHT;
+  }
   return v;
 }
+// Вес риска «оставшаяся в руке карта достанется игроку» (см. выше).
+// 0 = выключено по умолчанию — концептуально похожая идея (§5.1,
+// exposureRisk) уже проверялась headless-прогоном для ДРУГОГО решения
+// (выбор карты для сброса, N=200) и не дала эффекта; здесь другой
+// контекст (любой ход, не только сброс) — нужен отдельный прогон
+// N≥150×2, прежде чем включать по умолчанию.
+const HAND_EXPOSURE_WEIGHT=0;
 // Базовая оценка Expert. Отдельно от hardActionScore, чтобы веса
 // защиты не учитывались дважды при сложении с симуляцией.
 // Expert взвешивает защиту сильнее Hard (1.5 против 0.9), и вдобавок
@@ -1051,7 +1114,9 @@ function aiPlay(){
     G.msg=targets.length?`ИИ выбрал захват месяца ${card.m}`:`ИИ кладёт карту месяца ${card.m} на стол`;draw();
     setTimeout(()=>{
       G.aiHL=-1;G.aiCard=null;G.aiTargets=[];G.aHand.splice(idx,1);
+      const captured=G.table.filter(c=>move.captureIds.includes(c.id));
       const n=applyCapture(card,G.aCap,move.captureIds);
+      logEvent('ai_move',{round:G.round,card:cardDesc(card),captured:handDesc(captured),hand:handDesc(G.aHand)});
       G.msg=n?`ИИ захватил ${n} карты (месяц ${card.m})`:'ИИ кладёт карту на стол';draw();setTimeout(aiDraw,500);
     },430);
   },430);
@@ -1069,6 +1134,7 @@ function aiDraw(){
     setTimeout(()=>{
       G.aiTargets=[];
       const n=applyCapture(card,G.aCap,ids);
+      logEvent('ai_draw',{round:G.round,card:cardDesc(card),captured:handDesc(chosen),hand:handDesc(G.aHand)});
       G.msg=n?`ИИ из колоды захватил ${n} карты`:'ИИ из колоды кладёт карту на стол';draw();
       setTimeout(finishAiTurn,350);
     },300);
@@ -1724,7 +1790,7 @@ cv.addEventListener('click',e=>{
     const _bw=70,_gap=5,_total=4*(_bw+_gap)-_gap,_bx0=(W-_total)/2;
     for(let d=0;d<4;d++){
       const bx=_bx0+d*(_bw+_gap);
-      if(mx>=bx&&mx<=bx+_bw&&my>=34&&my<=54){DIFF=d+1;draw();return;}
+      if(mx>=bx&&mx<=bx+_bw&&my>=34&&my<=54){DIFF=d+1;try{localStorage.setItem(DIFF_STORAGE_KEY,String(DIFF));}catch(e){}draw();return;}
     }
     if(mx>=W-40&&mx<=W-6&&my>=4&&my<=28){ useHint(); return; }
   }
