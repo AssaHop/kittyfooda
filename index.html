@@ -687,12 +687,53 @@ function simulateTableAfter(action,table=G.table){
 // SCALE=1: раньше здесь стоял отдельный «×22» поверх сырого прироста
 // getYaku — то была вторая, несогласованная шкала очков сверху cardVal.
 // Портфель уже сам в единицах ожидаемых очков, второй множитель не нужен.
+// fixedSetValue — честное произведение вероятностей недостающих карт,
+// но у него есть математическое следствие: маржинальная ценность ПЕРВОЙ
+// карты N-карточного набора при 0 собранных — это pts×(произведение
+// ОСТАВШИХСЯ N-1 вероятностей). У двухкарточных (Ханами/Цукими) остаётся
+// всего один множитель — заметная величина. У трёхкарточных (Ино-Сика-Тё/
+// Ака-тан/Ао-тан) остаётся произведение ДВУХ множителей — на порядок
+// меньше, хотя карта объективно так же нужна. Формула не ошибается —
+// она честно оценивает ПАССИВНЫЙ шанс добрать остальное случайно. Но
+// раз уже вложился в набор, дальше его будешь целенаправленно преследовать
+// (тот же принцип «активного накопления», что и в HOARD_BIAS_MULT, только
+// здесь — про будущие ходы, а не про текущее удержание в руке). Компенсируем
+// точечно, только для трёхкарточных (двухкарточные и так работают верно —
+// см. GAME-STATE.md §5.7).
+const TRIPLE_POOLS=[POOL_INO,POOL_AKATAN,POOL_AOTAN];
+// 0 = выключено. Проверено headless self-play на Hard (immediateGain
+// используется без MC-надстройки Мастера, тот же механизм, дешевле
+// считать) на весах 0.5/1.5/3/6/10, N=200×2 на каждый — дозозависимости
+// нет вообще (44-52%, шум в обе стороны). См. GAME-STATE.md §5.7 —
+// точечная проверка на реальном примере (лента месяца 1) подтвердила,
+// что механизм технически работает как задуман, но агрегированного
+// выигрыша в самостоятельной игре не даёт — тот же паттерн, что и
+// HAND_EXPOSURE_WEIGHT/CAPTURE_URGENCY_WEIGHT. Не проверено отдельно
+// на Мастере (MC-прогон там на порядок дороже) — если включать заново,
+// начать с прогона именно на diff=4.
+const COMBO_SEED_BONUS=0;
+function comboSeedBonus(card,cap){
+  let bonus=0;
+  for(const pool of TRIPLE_POOLS){
+    if(!pool.includes(card.id)) continue;
+    if(!pool.some(id=>cap.some(c=>c.id===id))) bonus+=COMBO_SEED_BONUS; // 0 своих в этом пуле ДО захвата
+  }
+  return bonus;
+}
+// Общая для aiChooseMove (через hardActionScore/expertBaseScore) И
+// aiChooseCaptureIds — обе вызывают immediateGain напрямую, значит
+// comboSeedBonus автоматически действует в обоих местах разом, без
+// отдельной проводки во второй функции (см. GAME-STATE.md §5.7 —
+// раньше выбор при неоднозначном доборе из колоды не видел вообще
+// ничего сверх голого portfolioValue-диффа).
 function immediateGain(action,cap,table=G.table){
   const taken=captureCardsFor(action,table);
   if(!taken.length) return -cardVal(action.card,cap)*0.18;
   const before=(cap===G.aCap)?basePortfolio().ai:portfolioValue(cap,'ai');
   const after=portfolioValue([...cap,action.card,...taken],'ai');
-  return (after-before)+taken.length*0.5; // +0.5/карту — темп, не яку-ценность
+  let seed=0;
+  for(const c of [action.card,...taken]) seed+=comboSeedBonus(c,cap);
+  return (after-before)+taken.length*0.5+seed; // +0.5/карту — темп, не яку-ценность
 }
 function defensiveGain(action){
   const taken=captureCardsFor(action);
