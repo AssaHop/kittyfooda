@@ -1033,12 +1033,204 @@ function expertSimulationScore(action){
   return expertBaseScore(action)+total/samples;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// МАСТЕР — PIMC (Monte-Carlo с подстановкой скрытых карт).
+//
+// ИИ не знает руку игрока и порядок колоды. Для каждого решения он
+// много раз «раздаёт» неизвестные карты (совместимо со всем видимым)
+// и доигрывает раунд до конца по настоящим правилам быстрой простой
+// политикой за обе стороны. Выбирается вариант с лучшим средним итогом
+// раунда в очках. Все варианты проверяются на ОДНИХ И ТЕХ ЖЕ мирах —
+// разница между ними не тонет в везении раздачи.
+//
+// Руку игрока читает только как число карт. Время ограничено
+// PIMC_BUDGET_MS: быстрый телефон успеет больше миров (до PIMC_MAX_WORLDS),
+// слабый — меньше (не меньше PIMC_MIN_WORLDS), но не тормозит.
+// Headless (GAME-STATE.md §5.11): vs прежний Мастер 68% (N=150),
+// vs Hard 63% (200 миров) / 70.5% (1000 миров), N=200.
+// ═══════════════════════════════════════════════════════════════
+const PIMC_BUDGET_MS=250;
+const PIMC_MIN_WORLDS=40;
+const PIMC_MAX_WORLDS=1000;
+const PIMC_M=[],PIMC_T=[],PIMC_SUB=[];
+REF_DECK.forEach(c=>{PIMC_M[c.id]=c.m;PIMC_T[c.id]=c.t;PIMC_SUB[c.id]=c.sub||'';});
+
+// Очки яку по id карт — зеркало getYaku (сверено на 200 000 случайных наборов)
+function pimcYakuPts(cap){
+  let B=0,rain=false,cur=false,moon=false,sake=false,boar=false,deer=false,bfly=false;
+  let A=0,R=0,poetry=0,blue=0,P=0;
+  for(const id of cap){
+    const t=PIMC_T[id],s=PIMC_SUB[id];
+    if(t==='bright'){B++;if(s==='rain')rain=true;if(s==='curtain')cur=true;if(s==='moon')moon=true;}
+    else if(t==='animal'){A++;if(s==='sake')sake=true;if(s==='boar')boar=true;if(s==='deer')deer=true;if(s==='butterfly')bfly=true;}
+    else if(t==='ribbon'){R++;if(s==='poetry')poetry++;if(s==='blue')blue++;}
+    else P++;
+  }
+  let p=0;
+  if(B>=5)p+=10;else if(B===4)p+=rain?7:8;else if(B===3&&!rain)p+=5;
+  if(boar&&deer&&bfly)p+=5;
+  if(cur&&sake)p+=3;
+  if(moon&&sake)p+=3;
+  if(poetry>=3)p+=5;
+  if(blue>=3)p+=5;
+  if(R>=5)p+=R-4;
+  if(A>=5)p+=A-4;
+  if(P>=10)p+=P-9;
+  return p;
+}
+// Политика доигрывания: грубая ценность карты по типу
+function pimcVal(id){
+  const t=PIMC_T[id],s=PIMC_SUB[id];
+  if(t==='bright')return s==='rain'?4:6;
+  if(t==='animal')return(s==='boar'||s==='deer'||s==='butterfly'||s==='sake')?4:2;
+  if(t==='ribbon')return(s==='poetry'||s==='blue')?3.5:2;
+  return 1;
+}
+function pimcCaptureOpts(id,table){
+  const m=PIMC_M[id],same=[];
+  for(const t of table)if(PIMC_M[t]===m)same.push(t);
+  if(same.length===0)return[[]];
+  if(same.length===2)return[[same[0]],[same[1]]];
+  return[same];
+}
+function pimcBestOpt(id,table){
+  const os=pimcCaptureOpts(id,table);
+  if(os.length===1)return os[0];
+  return pimcVal(os[0][0])>=pimcVal(os[1][0])?os[0]:os[1];
+}
+function pimcApply(st,side,id,ids){
+  if(!ids.length){st.table.push(id);return;}
+  st.table=st.table.filter(t=>!ids.includes(t));
+  st.caps[side].push(id,...ids);
+}
+function pimcPolicyPlay(st,side){
+  const hand=st.hands[side];
+  let bi=0,bs=-Infinity,bids=null;
+  for(let i=0;i<hand.length;i++){
+    const ids=pimcBestOpt(hand[i],st.table);
+    let s;
+    if(ids.length){s=10+pimcVal(hand[i]);for(const t of ids)s+=pimcVal(t);}
+    else s=-pimcVal(hand[i]);
+    if(s>bs){bs=s;bi=i;bids=ids;}
+  }
+  const id=hand[bi];
+  hand.splice(bi,1);
+  pimcApply(st,side,id,bids);
+}
+function pimcDraw(st,side){
+  if(!st.deck.length)return;
+  const id=st.deck.pop();
+  pimcApply(st,side,id,pimcBestOpt(id,st.table));
+}
+// null — раунд продолжается; число — итог раунда для ИИ (side 0), со знаком
+function pimcYakuCheck(st,side){
+  const pts=pimcYakuPts(st.caps[side]);
+  if(pts>st.prev[side]){
+    st.prev[side]=pts;
+    const koi=pts<=2&&st.hands[side].length>=4;
+    if(!koi)return(side===0?1:-1)*pts*(st.koi[0]||st.koi[1]?2:1);
+    st.koi[side]=true;
+  }
+  return null;
+}
+function pimcExhaust(st){return pimcYakuPts(st.caps[0])-pimcYakuPts(st.caps[1]);}
+// phase: 'aiDraw' — после хода с руки ИИ ещё добирает; 'aiYaku' — после добора;
+// 'oppTurn' — ход игрока (после Мяу-Мяу ИИ)
+function pimcPlayout(st,phase){
+  let side;
+  if(phase==='aiDraw'){pimcDraw(st,0);const r=pimcYakuCheck(st,0);if(r!=null)return r;side=1;}
+  else if(phase==='aiYaku'){const r=pimcYakuCheck(st,0);if(r!=null)return r;side=1;}
+  else side=1;
+  for(;;){
+    if(!st.hands[side].length)return pimcExhaust(st);
+    pimcPolicyPlay(st,side);
+    pimcDraw(st,side);
+    const r=pimcYakuCheck(st,side);
+    if(r!=null)return r;
+    if(!st.hands[0].length&&!st.hands[1].length)return pimcExhaust(st);
+    side^=1;
+  }
+}
+function pimcBase(excludeIds=[]){
+  const ids=cs=>cs.map(c=>c.id);
+  const b={aHand:ids(G.aHand),table:ids(G.table),aCap:ids(G.aCap),pCap:ids(G.pCap),
+    pHandN:G.pHand.length,deckN:G.deck.length,
+    koi:[!!G.aKoiKoi,!!G.koiKoi],prev:[G.aPrevPts||0,G.prevPts||0]};
+  const known=new Set([...b.aHand,...b.table,...b.aCap,...b.pCap,...excludeIds]);
+  b.unknown=REF_DECK.map(c=>c.id).filter(id=>!known.has(id));
+  return b;
+}
+function pimcWorld(b){
+  const u=b.unknown.slice();
+  for(let i=u.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[u[i],u[j]]=[u[j],u[i]];}
+  return{pHand:u.slice(0,b.pHandN),deck:u.slice(b.pHandN,b.pHandN+b.deckN)};
+}
+function pimcState(b,w){
+  return{hands:[b.aHand.slice(),w.pHand.slice()],deck:w.deck.slice(),table:b.table.slice(),
+    caps:[b.aCap.slice(),b.pCap.slice()],koi:b.koi.slice(),prev:b.prev.slice()};
+}
+// Общий цикл: для каждого мира прогоняет все варианты (evalFn(state,k) → итог).
+function pimcRun(b,nOpts,evalFn){
+  const t0=Date.now(),sum=new Array(nOpts).fill(0);
+  let worlds=0;
+  while(worlds<PIMC_MAX_WORLDS&&(worlds<PIMC_MIN_WORLDS||Date.now()-t0<PIMC_BUDGET_MS)){
+    const w=pimcWorld(b);
+    for(let k=0;k<nOpts;k++)sum[k]+=evalFn(pimcState(b,w),k);
+    worlds++;
+  }
+  return{avg:sum.map(s=>s/worlds),worlds,ms:Date.now()-t0};
+}
+function pimcChooseMove(){
+  const b=pimcBase();
+  const moves=[];
+  b.aHand.forEach((id,hi)=>pimcCaptureOpts(id,b.table).forEach(c=>moves.push({hi,id,c})));
+  const toMove=mv=>({handIndex:mv.hi,card:G.aHand[mv.hi],captureIds:mv.c});
+  if(moves.length===1)return toMove(moves[0]);
+  const r=pimcRun(b,moves.length,(st,k)=>{
+    const mv=moves[k];
+    st.hands[0].splice(mv.hi,1);
+    pimcApply(st,0,mv.id,mv.c);
+    return pimcPlayout(st,'aiDraw');
+  });
+  let bk=0;for(let k=1;k<moves.length;k++)if(r.avg[k]>r.avg[bk])bk=k;
+  logEvent('ai_move_decision',{round:G.round,diff:DIFF,engine:'pimc',worlds:r.worlds,ms:r.ms,
+    candidates:moves.map((mv,k)=>({card:cardDesc(G.aHand[mv.hi]),capture:mv.c.length>0,captureCount:mv.c.length,score:+r.avg[k].toFixed(3)})),
+    chosenIndex:bk});
+  return toMove(moves[bk]);
+}
+function pimcChooseCaptureIds(card){
+  const b=pimcBase([card.id]); // добранная карта уже не в неизвестных
+  const os=pimcCaptureOpts(card.id,b.table);
+  if(os.length===1)return os[0];
+  const r=pimcRun(b,os.length,(st,k)=>{pimcApply(st,0,card.id,os[k]);return pimcPlayout(st,'aiYaku');});
+  const bk=r.avg[1]>r.avg[0]?1:0;
+  logEvent('ai_capture_choice',{round:G.round,diff:DIFF,engine:'pimc',worlds:r.worlds,ms:r.ms,card:cardDesc(card),
+    candidates:os.map((ids,k)=>({captureIds:ids.map(id=>cardDesc(REF_DECK[id])),score:+r.avg[k].toFixed(3)})),
+    chosenIndex:bk});
+  return os[bk];
+}
+function pimcShouldKoiKoi(pts){
+  const stopNow=pts*(G.koiKoi||G.aKoiKoi?2:1);
+  if(!G.aHand.length){
+    logEvent('ai_koikoi_decision',{round:G.round,diff:DIFF,engine:'pimc',pts,stopNow,decision:'stop',reason:'no_cards'});
+    return false;
+  }
+  const b=pimcBase();
+  b.prev[0]=pts;
+  const r=pimcRun(b,1,st=>{st.koi[0]=true;return pimcPlayout(st,'oppTurn');});
+  const d=r.avg[0]>stopNow;
+  logEvent('ai_koikoi_decision',{round:G.round,diff:DIFF,engine:'pimc',pts,stopNow,
+    evContinue:+r.avg[0].toFixed(2),worlds:r.worlds,ms:r.ms,decision:d?'koikoi':'stop'});
+  return d;
+}
+
 // ── Четыре уровня ИИ ─────────────────────────────────────────────
 function aiChooseMove(){
   invalidateUnknownCache(); // состав известного не меняется внутри одной оценки хода
   const moves=legalMovesForHand(G.aHand);
   if(!moves.length)return null;
   if(DIFF===1) return moves[(Math.random()*moves.length)|0];
+  if(DIFF===4) return pimcChooseMove();
   let best=moves[0],bs=-Infinity,bi=0;
   const scored=moves.map((m,i)=>{
     const s=DIFF===2?normalActionScore(m):DIFF===3?hardActionScore(m):expertSimulationScore(m);
@@ -1057,6 +1249,7 @@ function aiChooseCaptureIds(card){
   const opts=captureOptions(card);
   if(opts.length===1)return opts[0];
   if(DIFF===1)return opts[(Math.random()*opts.length)|0];
+  if(DIFF===4)return pimcChooseCaptureIds(card);
   let best=opts[0],bs=-Infinity,bi=0;
   const scored=opts.map((ids,i)=>{
     const a={card,captureIds:ids};
@@ -1153,6 +1346,7 @@ function aiShouldKoiKoi(pts){
     logEvent('ai_koikoi_decision',{round:G.round,diff:DIFF,pts,threat:+threat.toFixed(2),near:+near.toFixed(2),decision:d?'koikoi':'stop'});
     return d;
   }
+  if(DIFF===4) return pimcShouldKoiKoi(pts);
   // Expert: решение по матожиданию с поправкой на положение в матче.
   // Матч теперь идёт до targetScore очков, а не фикс. числа раундов —
   // «конец матча» определяем как приближение чьего-либо счёта к цели.
