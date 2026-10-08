@@ -627,11 +627,35 @@ function brightValue(cap,side){
   }
   return expected;
 }
+// Тан×N/Тане×N/Касу×N: точное мат. ожидание E[max(0, N−порог)] по
+// распределению числа карт (Пуассон-биномиальное, DP по пулу ≤24 карт).
+// Было max(0, E[N]−порог) — «ступенька» по среднему: пока ожидаемое
+// число ниже порога, каждая карта пула стоила ровно 0, выше — почти
+// полное очко. Касу (10 из 24) переваливал порог по среднему раньше,
+// чем Тане (5 из 9) и Тан (5 из 10), и ИИ брал/блокировал простые
+// вместо животных и лент. См. GAME-STATE.md §5.10.
 function progressiveValue(pool,cap,side,threshold){
-  const owned=pool.filter(id=>cap.some(c=>c.id===id)).length;
-  let E=owned;
-  for(const id of pool) if(!cap.some(c=>c.id===id)) E+=cardProb(id,side);
-  return Math.max(0,E-threshold); // порог должен совпадать с реальным getYaku (см. вызовы)
+  let owned=0;
+  const probs=[];
+  for(const id of pool){
+    if(cap.some(c=>c.id===id)) owned++;
+    else probs.push(cardProb(id,side));
+  }
+  let dist=[1];                                   // dist[k] = P(добрать ровно k)
+  for(const p of probs){
+    const next=new Array(dist.length+1).fill(0);
+    for(let k=0;k<dist.length;k++){
+      next[k]+=dist[k]*(1-p);
+      next[k+1]+=dist[k]*p;
+    }
+    dist=next;
+  }
+  let ev=0;
+  for(let k=0;k<dist.length;k++){
+    const n=owned+k;
+    if(n>threshold) ev+=dist[k]*(n-threshold); // порог совпадает с getYaku (см. вызовы)
+  }
+  return ev;
 }
 // Полная ожидаемая стоимость портфеля одной стороны в очках яку.
 function portfolioValue(cap,side){
