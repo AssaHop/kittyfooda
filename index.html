@@ -1156,6 +1156,9 @@ function pimcBase(excludeIds=[]){
   const b={aHand:ids(G.aHand),table:ids(G.table),aCap:ids(G.aCap),pCap:ids(G.pCap),
     pHandN:G.pHand.length,deckN:G.deck.length,
     koi:[!!G.aKoiKoi,!!G.koiKoi],prev:[G.aPrevPts||0,G.prevPts||0]};
+  // Учёт счёта партии: сколько каждой стороне не хватает до победы
+  const target=G.targetScore||TARGET_SCORE,sc=G.scores||[0,0];
+  b.needA=Math.max(1,target-sc[1]);b.needO=Math.max(1,target-sc[0]);
   const known=new Set([...b.aHand,...b.table,...b.aCap,...b.pCap,...excludeIds]);
   b.unknown=REF_DECK.map(c=>c.id).filter(id=>!known.has(id));
   return b;
@@ -1169,13 +1172,17 @@ function pimcState(b,w){
   return{hands:[b.aHand.slice(),w.pHand.slice()],deck:w.deck.slice(),table:b.table.slice(),
     caps:[b.aCap.slice(),b.pCap.slice()],koi:b.koi.slice(),prev:b.prev.slice()};
 }
+// Итог раунда → полезность с учётом счёта партии: очки сверх того, что
+// нужно до TARGET_SCORE, ничего не стоят (партия всё равно кончается).
+// Не подгоночный вес — прямое следствие правила «игра до N очков».
+function pimcUtil(r,b){return r>=0?Math.min(r,b.needA):-Math.min(-r,b.needO);}
 // Общий цикл: для каждого мира прогоняет все варианты (evalFn(state,k) → итог).
 function pimcRun(b,nOpts,evalFn){
   const t0=Date.now(),sum=new Array(nOpts).fill(0);
   let worlds=0;
   while(worlds<PIMC_MAX_WORLDS&&(worlds<PIMC_MIN_WORLDS||Date.now()-t0<PIMC_BUDGET_MS)){
     const w=pimcWorld(b);
-    for(let k=0;k<nOpts;k++)sum[k]+=evalFn(pimcState(b,w),k);
+    for(let k=0;k<nOpts;k++)sum[k]+=pimcUtil(evalFn(pimcState(b,w),k),b);
     worlds++;
   }
   return{avg:sum.map(s=>s/worlds),worlds,ms:Date.now()-t0};
@@ -1218,9 +1225,9 @@ function pimcShouldKoiKoi(pts){
   const b=pimcBase();
   b.prev[0]=pts;
   const r=pimcRun(b,1,st=>{st.koi[0]=true;return pimcPlayout(st,'oppTurn');});
-  const d=r.avg[0]>stopNow;
+  const d=r.avg[0]>pimcUtil(stopNow,b);
   logEvent('ai_koikoi_decision',{round:G.round,diff:DIFF,engine:'pimc',pts,stopNow,
-    evContinue:+r.avg[0].toFixed(2),worlds:r.worlds,ms:r.ms,decision:d?'koikoi':'stop'});
+    evContinue:+r.avg[0].toFixed(2),needAi:b.needA,needPlayer:b.needO,worlds:r.worlds,ms:r.ms,decision:d?'koikoi':'stop'});
   return d;
 }
 
