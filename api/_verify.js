@@ -64,13 +64,12 @@ export function verifyInitData(initData, botToken) {
 
 /**
  * Достаёт initData из заголовка (работает и для GET, и для POST)
- * с запасным вариантом в теле/query для обратной совместимости.
+ * с запасным вариантом в теле. Из query не берём: адреса попадают в логи.
  */
 export function extractInitData(req) {
   return (
     req.headers['x-telegram-init-data'] ||
     (req.body && req.body.init_data) ||
-    (req.query && req.query.init_data) ||
     ''
   );
 }

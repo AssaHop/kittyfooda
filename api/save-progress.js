@@ -39,7 +39,22 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { result, game_state } = req.body || {};
+      const { result, game_state, action } = req.body || {};
+      const rpc = (fn, args) => fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+        method: 'POST', headers, body: JSON.stringify(args),
+      });
+
+      // Списание купленной подсказки (атомарно в базе, функция use_hint)
+      if (action === 'use_hint') {
+        const r = await rpc('use_hint', { p_telegram_id: telegramId });
+        if (!r.ok) {
+          console.error('Supabase error', await r.text());
+          return res.status(500).json({ error: 'Supabase error' });
+        }
+        const left = await r.json();
+        if (left < 0) return res.status(409).json({ error: 'no hints', hints: 0 });
+        return res.status(200).json({ hints: left });
+      }
 
       // Ограничиваем произвольный JSON от клиента: без этого можно было
       // залить в jsonb-колонку сколь угодно большой/неожиданный блоб.
@@ -56,33 +71,22 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'invalid result' });
       }
 
-      // username берём из подписанных данных, а не из тела
-      let patch = { telegram_id: telegramId, username };
-
-      // Автосохранение состояния партии (может прийти без result — просто снапшот хода)
-      if (game_state !== undefined) {
-        patch.game_state = game_state; // null явно чистит сохранение
+      let r;
+      if (result) {
+        // Итог матча: +1 к статистике и очистка game_state одной операцией
+        // в базе (функция record_result) — без гонки «прочитал → записал».
+        r = await rpc('record_result', { p_telegram_id: telegramId, p_username: username, p_result: result });
+      } else {
+        // username берём из подписанных данных, а не из тела
+        const patch = { telegram_id: telegramId, username };
+        // Автосохранение состояния партии (снапшот хода); null явно чистит сохранение
+        if (game_state !== undefined) patch.game_state = game_state;
+        r = await fetch(`${SUPABASE_URL}/rest/v1/users?on_conflict=telegram_id`, {
+          method: 'POST',
+          headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=representation' },
+          body: JSON.stringify([patch]),
+        });
       }
-
-      // Итог матча — обновляем накопительную статистику и чистим game_state
-      if (result === 'win' || result === 'lose' || result === 'draw') {
-        const cur = await fetch(
-          `${SUPABASE_URL}/rest/v1/users?telegram_id=eq.${telegramId}&select=wins,losses,draws`,
-          { headers }
-        );
-        const curData = await cur.json();
-        const row = curData[0] || { wins: 0, losses: 0, draws: 0 };
-        patch.wins = (row.wins || 0) + (result === 'win' ? 1 : 0);
-        patch.losses = (row.losses || 0) + (result === 'lose' ? 1 : 0);
-        patch.draws = (row.draws || 0) + (result === 'draw' ? 1 : 0);
-        patch.game_state = null;
-      }
-
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/users?on_conflict=telegram_id`, {
-        method: 'POST',
-        headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=representation' },
-        body: JSON.stringify([patch]),
-      });
 
       if (!r.ok) {
         const err = await r.text();

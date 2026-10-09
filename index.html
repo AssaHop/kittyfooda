@@ -80,13 +80,27 @@ async function apiFetch(path, options = {}){
     options.headers || {},
     TG_INIT_DATA ? {'X-Telegram-Init-Data': TG_INIT_DATA} : {}
   );
-  const r = await fetch(`${API_BASE}${path}`, Object.assign({}, options, {headers}));
+  let r;
+  try{ r = await fetch(`${API_BASE}${path}`, Object.assign({}, options, {headers})); }
+  catch(e){ warnSaveFailed(); throw e; }
   if(r.status === 401){
     SESSION_EXPIRED = true;
     G.msg = 'Сессия устарела — переоткройте игру';
     draw();
+  }else if(r.status >= 500){
+    warnSaveFailed();
   }
   return r;
+}
+
+// Сервер или база недоступны — говорим об этом один раз за сессию,
+// иначе сохранения и статистика пропадают молча.
+let SAVE_WARNED = false;
+function warnSaveFailed(){
+  if(SAVE_WARNED || SESSION_EXPIRED) return;
+  SAVE_WARNED = true;
+  G.msg = '⚠ Нет связи с сервером — прогресс сейчас не сохраняется';
+  draw();
 }
 
 let PLAYER_STATS={wins:0,losses:0,draws:0}; // накопительная статистика, подгружается из базы
@@ -106,7 +120,7 @@ async function syncUser(){
       if(data.user.game_state){
         SAVED_GAME=data.user.game_state;
       }
-      hintsOwnedSync();
+      hintsOwnedSync(data.user);
     }
     SYNC_DONE=true;
     draw();
@@ -127,7 +141,20 @@ async function saveMatchResult(result, playerScore, aiScore){
     });
   }catch(e){ console.warn('saveMatchResult failed', e); }
 }
-function hintsOwnedSync(){} // заглушка на будущее (синхронизация купленных бустеров)
+// Купленные подсказки хранятся в базе (users.hints), начисляет их вебхук оплаты
+function hintsOwnedSync(user){
+  if(user && typeof user.hints === 'number') hintsOwned = user.hints;
+}
+async function refreshHints(){
+  try{
+    const r = await apiFetch('/api/save-progress');
+    const data = await r.json();
+    // Вебхук мог ещё не дойти — не отнимаем только что купленную подсказку.
+    // Точное значение придёт из базы при следующем запуске.
+    if(data.user && typeof data.user.hints === 'number') hintsOwned = Math.max(hintsOwned, data.user.hints);
+    draw();
+  }catch(e){ console.warn('refreshHints failed', e); }
+}
 
 // Регистрируем/обновляем пользователя сразу при открытии игры
 syncUser();
@@ -151,6 +178,8 @@ async function buyHint(){
         hintsOwned++;
         G.msg='Подсказка куплена! Нажмите 💡 ещё раз, чтобы применить.';
         draw();
+        // Начисление делает вебхук на сервере — сверяемся с базой чуть позже
+        setTimeout(refreshHints, 3000);
       }
     });
   }catch(e){ console.warn('buyHint failed', e); }
@@ -168,6 +197,10 @@ function useHint(){
     if(s>bestScore){bestScore=s;bestI=i;}
   });
   hintsOwned--;
+  apiFetch('/api/save-progress', { method:'POST', body: JSON.stringify({ action:'use_hint' }) })
+    .then(r => r.json())
+    .then(d => { if(typeof d.hints === 'number'){ hintsOwned = d.hints; draw(); } })
+    .catch(e => console.warn('use_hint failed', e));
   hintActive=bestI;
   G.msg=`💡 Подсказка: карта №${bestI+1} слева`;
   draw();

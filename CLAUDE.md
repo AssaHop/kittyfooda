@@ -2,14 +2,18 @@
 
 ## Проект
 - Ханафуда (кои-кои) с кошками, **Telegram Mini App** бота `@KittyFooda_bot`.
-- Вся игра в одном файле `index.html` (canvas, vanilla JS). Бэкенд — serverless-функции в `api/` на Vercel + Supabase.
+- Вся игра в одном файле `index.html` (canvas, vanilla JS). **Страница игры отдаётся с GitHub Pages** (`assahop.github.io`),
+  бэкенд — serverless-функции `api/` на Vercel (`kittyfooda.vercel.app`) + Supabase (проект `bkaedzxengpixciplkim`, бесплатный тариф).
 - Общение с пользователем — на русском.
 - Полное состояние проекта: `GAME-STATE.md`. **Начинать с §0** — там текущий статус и следующие шаги.
 
 ## Структура
 - `index.html` — игра целиком: колода, яку, ИИ, отрисовка, журнал событий, покупки и прогресс.
-- `api/` — `save-progress.js`, `create-invoice.js`, `telegram-webhook.js`, `_verify.js` (проверка initData);
-  `TODO-security.md` — открытые вопросы безопасности.
+- `api/` — `save-progress.js` (прогресс, сохранение партии, списание подсказки), `create-invoice.js`, `telegram-webhook.js`
+  (оплата), `keepalive.js` (ежедневный пинг базы, Vercel Cron в `vercel.json`), `_verify.js` (проверка initData),
+  `_catalog.js` (цены); `TODO-security.md` — открытые вопросы безопасности.
+- `docs/sql/` — SQL-миграции. Их выполняет **пользователь** в Supabase → SQL Editor (у Claude доступа к базе нет);
+  код, который зависит от новой миграции, вливать в `main` только после подтверждения, что SQL выполнен.
 - `cards/` — внешний арт карт. Файл `cards/<имя>.png|jpg|svg` перекрывает встроенный `CARD_SVG`.
 - `tools/ai-sim/` — headless-харнесс прогонов ИИ (`sim.js`, `pimc.js`, `yakucheck.js`, `logcheck.js`, `README.md`).
   На Vercel не деплоится (`.vercelignore`).
@@ -31,8 +35,12 @@
   Рабочая ветка — `ai/exact-progressive-value`, в `main` вливать fast-forward.
 - Клон неглубокий: если git не видит удалённую ветку, добавить refspec через `git config --add remote.origin.fetch ...`.
 - Сайт `*.vercel.app` из контейнера недоступен. Проверку в живой игре делает пользователь.
+- Журнал ходов из игры хранится только на телефоне (localStorage) — он не доказывает, что сервер и база работают.
+  Работу бэкенда проверять по Vercel → Logs (`/api/save-progress` → 200) и строкам в Supabase → Table Editor.
+- Бесплатный Supabase усыпляет проект после ~недели без запросов; спящая база молча теряет записи
+  (так было в сентябре–октябре 2026). Против этого — `api/keepalive.js`.
 
 ## Дальше (из §0)
 1. Переделка UI под размер и аспект экрана и фреймворк для загрузки арта. Ждём описание от пользователя.
-2. Проверка бэкенда: безопасность записи покупок и прогресса (`GAME-STATE.md` §7, `api/TODO-security.md`).
+2. Проверка бэкенда — сделана 2026-10-09 (`GAME-STATE.md` §7).
 3. Доработки PIMC — только по запросу.

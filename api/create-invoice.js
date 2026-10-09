@@ -3,11 +3,7 @@
 // Цены заданы на сервере — клиент не может назначить свою.
 
 import { verifyInitData, extractInitData, applyCors } from './_verify.js';
-
-// Каталог: единственный источник правды по ценам
-const CATALOG = {
-  hint: { stars: 15, title: 'Подсказка', description: 'Показывает лучший ход в текущей ситуации' },
-};
+import { CATALOG } from './_catalog.js';
 
 export default async function handler(req, res) {
   applyCors(req, res);
