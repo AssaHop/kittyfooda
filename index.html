@@ -9,21 +9,14 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;overflow:hidden;}
 body{
-  min-height:100vh;
-  min-height:100dvh;
-  min-height:var(--tg-viewport-stable-height,100vh);
-  background:radial-gradient(ellipse at 50% 0,#1a0e06,#060402 70%);
-  display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:12px;
-  padding:max(12px,var(--tg-safe-top,0px),env(safe-area-inset-top)) 12px max(12px,var(--tg-safe-bottom,0px),env(safe-area-inset-bottom));
+  background:#060402;
   font-family:Georgia,serif;color:#e8d5b0;
 }
 h1{font-size:clamp(16px,4vw,24px);letter-spacing:6px;
    color:#c9a227;text-shadow:0 0 20px rgba(201,162,39,.5);}
+/* Холст на весь экран; отступы безопасной зоны считает boardLayout() */
 canvas{display:block;cursor:pointer;
-       border-radius:8px;
-       box-shadow:0 0 50px rgba(0,0,0,.8);
-       max-width:98vw;height:auto;
+       position:fixed;left:0;top:0;
        touch-action:manipulation;
        -webkit-user-select:none;user-select:none;}
 footer{color:#5a4a28;font-size:11px;text-align:center;max-width:900px;line-height:1.7;}
@@ -235,6 +228,275 @@ const YPROG= 412;  // Yaku progress panel
 const YPH  = 546;  // Player hand top (2 ряда — см. playerHandLayout)
 const YMSG = 706;  // Message bar
 const YBTN = 762;  // Choice buttons
+
+// ── Игровой стол: раскладка под экран (2026-10-09) ───────────────
+// Макет задан в «референсных» пикселях экрана iPhone 15 (1179×2556,
+// это и есть физические пиксели этого экрана). Пиксельные размеры
+// масштабируются одним коэффициентом k, проценты (отступы сверху/снизу,
+// высота стола) берутся от реальной высоты экрана. Если экран короче
+// (16:9, планшет), k ограничивается высотой, и поле центрируется.
+// Одна функция boardLayout() — и для отрисовки, и для хит-теста кликов.
+const REF_W=1179;          // ширина экрана-образца
+const MIN_REF_H=2340;      // минимальная высота (в реф. px), при которой всё помещается
+const SAFE_W=1100;         // ширина игровой зоны
+const BCW=190, BCH=310;    // карта на столе и в руке
+const B_GAP=20;            // промежуток между картами
+const SAFE_TOP=0.08, SAFE_BOTTOM=0.07, FELT_H=0.40, FELT_W=0.95;
+
+let VIEW={cssW:450,cssH:800,dpr:1,k:1,VW:REF_W,VH:2556,ls:1,lx:0,ly:0};
+function readTgInsets(){
+  const tg=window.Telegram&&window.Telegram.WebApp;
+  if(!tg) return {top:0,bottom:0};
+  const a=tg.safeAreaInset||{}, b=tg.contentSafeAreaInset||{};
+  return {top:(a.top||0)+(b.top||0), bottom:(a.bottom||0)+(b.bottom||0)};
+}
+function resizeCanvas(){
+  const cssW=window.innerWidth||450, cssH=window.innerHeight||800;
+  const dpr=Math.min(3,window.devicePixelRatio||1);
+  cv.style.width=cssW+'px';cv.style.height=cssH+'px';
+  cv.width=Math.round(cssW*dpr);cv.height=Math.round(cssH*dpr);
+  const k=Math.min(cssW/REF_W, cssH/MIN_REF_H);
+  const ls=Math.min(cssW/W, cssH/H); // старые экраны (меню, журнал) — 450×800 по центру
+  VIEW={cssW,cssH,dpr,k,VW:cssW/k,VH:cssH/k,ls,lx:(cssW-W*ls)/2,ly:(cssH-H*ls)/2,insets:readTgInsets()};
+}
+function setBoardTransform(){const v=VIEW;ct.setTransform(v.dpr*v.k,0,0,v.dpr*v.k,0,0);}
+function setLegacyTransform(){const v=VIEW;ct.setTransform(v.dpr*v.ls,0,0,v.dpr*v.ls,v.dpr*v.lx,v.dpr*v.ly);}
+// Затемнение всего экрана (а не только области 450×800) для попапов
+function dimScreen(color){
+  ct.save();ct.setTransform(1,0,0,1,0,0);
+  ct.fillStyle=color;ct.fillRect(0,0,cv.width,cv.height);
+  ct.restore();
+}
+// Координаты клика → система макета
+function toBoard(cx,cy){return {x:cx/VIEW.k, y:cy/VIEW.k};}
+function toLegacy(cx,cy){return {x:(cx-VIEW.lx)/VIEW.ls, y:(cy-VIEW.ly)/VIEW.ls};}
+
+function boardLayout(){
+  const {VW,VH,k,insets}=VIEW;
+  const sx=(VW-SAFE_W)/2;
+  const sTop=Math.max(VH*SAFE_TOP, (insets?insets.top:0)/k);
+  const sBot=VH-Math.max(VH*SAFE_BOTTOM, (insets?insets.bottom:0)/k);
+  const colX=sx+10+BCW+40;                       // первая колонка стола и руки
+  const band={x:sx,y:sBot-100,w:SAFE_W,h:100};   // кнопки Стоп / Мяу-Мяу, сообщения
+  const handY2=band.y-BCH, handY1=handY2-B_GAP-BCH;
+  const ai={x:colX,y:sTop+80};
+  const midTop=ai.y+BCH, midBot=handY1;
+  const midC=(midTop+midBot)/2;
+  const tableH=2*BCH+B_GAP;
+  const tableY=midC-tableH/2;
+  const gapA=tableY-midTop, gapP=midBot-(tableY+tableH);
+  const pad=Math.min(16,gapA/8);
+  return {
+    VW,VH,sx,sTop,sBot,colX,band,
+    header:{x:sx,y:sTop,w:SAFE_W,h:80},
+    hint:{x:sx+SAFE_W-200,y:sTop+6,w:200,h:68},
+    ai, aiAct:{x:ai.x+BCW+40,y:ai.y},
+    deck:{x:sx+10,y:midC-BCH/2},
+    table:{x:colX,y:tableY,h:tableH},
+    felt:{x:(VW-VW*FELT_W)/2,y:midC-VH*FELT_H/2,w:VW*FELT_W,h:VH*FELT_H},
+    cellsAI:{x:sx,y:midTop+pad,w:SAFE_W,h:gapA-2*pad},
+    cellsP:{x:sx,y:tableY+tableH+pad,w:SAFE_W,h:gapP-2*pad},
+    handY1,handY2,
+  };
+}
+// Стол: 4 колонки; больше 8 карт — 3-й ряд, карты ужимаются в ту же высоту
+function tableLayout(L){
+  const sorted=[...G.table].sort((a,b)=>a.m-b.m);
+  const rows=Math.max(2,Math.ceil(sorted.length/4));
+  const h=rows<=2?BCH:(L.table.h-(rows-1)*B_GAP)/rows, w=h*BCW/BCH;
+  const y0=L.table.y+(L.table.h-(rows*h+(rows-1)*B_GAP))/2;
+  return sorted.map((card,i)=>({card,w,h,
+    x:L.table.x+(i%4)*(w+B_GAP), y:y0+Math.floor(i/4)*(h+B_GAP)}));
+}
+// Рука игрока — 2 ряда по 4, отсортированы по месяцу. Сам G.pHand не
+// переупорядочивается (на индексы завязаны G.sel/hintActive/playerPlay).
+function playerHandLayout(L=boardLayout()){
+  return G.pHand
+    .map((card,i)=>({card,i}))
+    .sort((a,b)=>a.card.m-b.card.m||(a.i-b.i))
+    .map((e,idx)=>({card:e.card,i:e.i,
+      x:L.colX+(idx%4)*(BCW+B_GAP),
+      y:idx<4?L.handY1:L.handY2}));
+}
+function choiceButtons(L){
+  const b=L.band,w=(b.w-30)/2;
+  return {stop:{x:b.x,y:b.y+6,w,h:b.h-12}, koi:{x:b.x+w+30,y:b.y+6,w,h:b.h-12}};
+}
+const inRect=(p,r)=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h;
+
+function drawBoard(){
+  const L=boardLayout();
+  // Сукно стола: 95% ширины, 40% высоты экрана
+  ct.fillStyle='rgba(20,60,30,.35)';
+  ct.beginPath();rr(L.felt.x,L.felt.y,L.felt.w,L.felt.h,40);ct.fill();
+  drawBoardHeader(L);
+  drawBoardAI(L);
+  drawYakuCells(L.cellsAI,G.aCap,true);
+  drawBoardDeck(L);
+  drawBoardTable(L);
+  drawYakuCells(L.cellsP,G.pCap,false);
+  drawBoardHand(L);
+  drawBoardBand(L);
+}
+function drawBoardHeader(L){
+  const h=L.header,cy=h.y+h.h/2;
+  ct.textBaseline='middle';
+  ct.font='bold 44px Georgia';ct.textAlign='left';
+  ct.fillStyle='#f0e8d0';ct.fillText(`ВЫ ${G.scores[0]}`,h.x+10,cy);
+  const youW=ct.measureText(`ВЫ ${G.scores[0]}`).width;
+  ct.fillStyle='#c04040';ct.fillText(`  :  ${G.scores[1]} ИИ`,h.x+10+youW,cy);
+  ct.font='bold 36px Georgia';ct.fillStyle='#c9a227';ct.textAlign='center';
+  const koi=(G.koiKoi||G.aKoiKoi)?'  ★ Мяу-Мяу':'';
+  ct.fillText(`Раунд ${G.round} · до ${G.targetScore}${koi}`,h.x+h.w/2+40,cy);
+  // Подсказка — справа над картой противника
+  const b=L.hint;
+  ct.fillStyle='rgba(201,162,39,.35)';ct.strokeStyle='#c9a227';ct.lineWidth=4;
+  ct.beginPath();rr(b.x,b.y,b.w,b.h,16);ct.fill();ct.stroke();
+  ct.fillStyle='#f0d070';ct.font='40px Georgia';ct.textAlign='center';
+  ct.fillText(hintsOwned>0?`💡 ${hintsOwned}`:'💡',b.x+b.w/2,b.y+b.h/2);
+}
+function drawBoardAI(L){
+  // Рука ИИ — одна карта рубашкой и число карт
+  const a=L.ai;
+  if(G.aHand.length){
+    drawCard(a.x,a.y,null,false,false,BCW,BCH);
+    ct.fillStyle='rgba(0,0,0,.65)';ct.beginPath();ct.arc(a.x+BCW-30,a.y+BCH-30,34,0,Math.PI*2);ct.fill();
+    ct.fillStyle='#fff';ct.font='bold 40px Georgia';ct.textAlign='center';ct.textBaseline='middle';
+    ct.fillText(G.aHand.length,a.x+BCW-30,a.y+BCH-30);
+  }
+  if(G.turn==='ai'&&G.phase!=='roundover'){
+    ct.fillStyle='#c06060';ct.font='34px Georgia';ct.textAlign='left';ct.textBaseline='top';
+    ct.fillText('ИИ ходит…',L.aiAct.x,L.aiAct.y);
+  }
+  // Карта, которую ИИ сейчас играет с руки, — лицом вверх рядом
+  if(G.aiHL>=0&&G.aiCard){
+    const x=L.aiAct.x,y=L.aiAct.y;
+    ct.save();ct.shadowColor='rgba(255,120,60,.9)';ct.shadowBlur=40;
+    drawCard(x,y,G.aiCard,true,false,BCW,BCH);ct.restore();
+    ct.strokeStyle='rgba(255,150,60,.9)';ct.lineWidth=6;ct.strokeRect(x-4,y-4,BCW+8,BCH+8);
+  }
+}
+function drawBoardDeck(L){
+  const d=L.deck;
+  if(G.deck.length){
+    drawCard(d.x,d.y,null,false,false,BCW,BCH);
+    ct.fillStyle='rgba(255,255,255,.75)';ct.font='bold 40px Georgia';
+    ct.textAlign='center';ct.textBaseline='top';
+    ct.fillText(G.deck.length,d.x+BCW/2,d.y+BCH+10);
+  }else{
+    ct.fillStyle='rgba(255,255,255,.1)';ct.fillRect(d.x,d.y,BCW,BCH);
+  }
+  // Карта, только что взятая из колоды (и ИИ, и игроком), — лицом вверх поверх колоды
+  if(G.aiPreview){
+    ct.save();ct.shadowColor='rgba(255,200,80,.9)';ct.shadowBlur=40;
+    drawCard(d.x,d.y-24,G.aiPreview,true,false,BCW,BCH);ct.restore();
+    ct.strokeStyle='rgba(255,200,80,.9)';ct.lineWidth=6;ct.strokeRect(d.x-4,d.y-28,BCW+8,BCH+8);
+  }
+}
+function drawBoardTable(L){
+  tableLayout(L).forEach(({card,x,y,w,h})=>{
+    const isTarget=G.aiTargets&&G.aiTargets.some(t=>t.id===card.id);
+    if(isTarget){
+      ct.save();ct.shadowColor='rgba(255,160,40,.9)';ct.shadowBlur=40;
+      ct.strokeStyle='rgba(255,160,40,.95)';ct.lineWidth=7;
+      ct.strokeRect(x-6,y-6,w+12,h+12);ct.restore();
+    }
+    drawCard(x,y,card,true,false,w,h);
+  });
+}
+// Ячейки яку: взятые карты по типам + очки раунда
+const CELL_TYPES=[['bright','👑'],['animal','🧸'],['ribbon','🎀'],['plain','🐾']];
+function drawYakuCells(r,cap,isAi){
+  if(r.h<40) return;
+  const gap=10, ptsW=140, cw=(r.w-ptsW-4*gap)/4;
+  const labelH=Math.min(48,r.h*0.32);
+  const mh=Math.max(20,r.h-labelH-12), mw=mh*BCW/BCH;
+  CELL_TYPES.forEach(([t,icon],ci)=>{
+    const x=r.x+ci*(cw+gap), cards=cap.filter(c=>c.t===t).sort((a,b)=>a.m-b.m);
+    ct.fillStyle=isAi?'rgba(90,20,20,.35)':'rgba(0,0,0,.35)';
+    ct.beginPath();rr(x,r.y,cw,r.h,14);ct.fill();
+    ct.fillStyle=isAi?'rgba(230,160,160,.85)':'rgba(255,255,255,.85)';
+    ct.font=`bold ${Math.round(labelH*0.75)}px Georgia`;ct.textAlign='left';ct.textBaseline='middle';
+    ct.fillText(`${icon} ${cards.length}`,x+10,r.y+labelH/2+4);
+    const step=cards.length>1?Math.min(mw+6,(cw-16-mw)/(cards.length-1)):0;
+    cards.forEach((c,i)=>drawCard(x+8+i*step,r.y+labelH+4,c,true,false,mw,mh));
+  });
+  const px=r.x+4*(cw+gap), pts=yakuPts(getYaku(cap));
+  ct.fillStyle=pts?'rgba(201,162,39,.35)':'rgba(0,0,0,.35)';
+  ct.beginPath();rr(px,r.y,ptsW,r.h,14);ct.fill();
+  ct.fillStyle=pts?'#f0d070':'rgba(255,255,255,.4)';ct.textAlign='center';ct.textBaseline='middle';
+  ct.font=`bold ${Math.round(Math.min(64,r.h*0.4))}px Georgia`;
+  ct.fillText(pts,px+ptsW/2,r.y+r.h/2-10);
+  ct.font=`${Math.round(Math.min(30,r.h*0.18))}px Georgia`;
+  ct.fillText(isAi?'ИИ':'вы',px+ptsW/2,r.y+r.h/2+r.h*0.25);
+}
+function drawBoardHand(L){
+  playerHandLayout(L).forEach(({card,i,x,y})=>{
+    const sel=G.sel===i&&(G.phase==='select'||G.phase==='choose');
+    const yy=y+(sel?-30:0);
+    drawCard(x,yy,card,true,sel,BCW,BCH);
+    if(hintActive===i){
+      ct.save();ct.strokeStyle='rgba(80,220,255,.95)';ct.lineWidth=8;
+      ct.shadowColor='rgba(80,220,255,.9)';ct.shadowBlur=30;
+      ct.strokeRect(x-6,yy-6,BCW+12,BCH+12);ct.restore();
+    }
+  });
+}
+function drawBoardBand(L){
+  const b=L.band;
+  if(G.phase==='choose'){
+    const {stop,koi}=choiceButtons(L);
+    boardBtn(stop,'✋  СТОП','#1a4a10','#50b030');
+    boardBtn(koi,'🐱  МЯУ-МЯУ','#4a1010','#c04040');
+    return;
+  }
+  ct.fillStyle='rgba(0,0,0,.55)';ct.beginPath();rr(b.x,b.y+6,b.w,b.h-12,20);ct.fill();
+  ct.fillStyle='#f0d878';ct.textAlign='center';ct.textBaseline='middle';
+  let fs=42;ct.font=`bold ${fs}px Georgia`;
+  while(fs>24&&ct.measureText(G.msg||'').width>b.w-40){fs-=2;ct.font=`bold ${fs}px Georgia`;}
+  ct.fillText(G.msg||'',b.x+b.w/2,b.y+b.h/2);
+}
+function boardBtn(r,label,bg,bc){
+  ct.fillStyle=bg;ct.strokeStyle=bc;ct.lineWidth=6;
+  ct.beginPath();rr(r.x,r.y,r.w,r.h,20);ct.fill();ct.stroke();
+  ct.fillStyle='#fff';ct.font='bold 46px Georgia';ct.textAlign='center';ct.textBaseline='middle';
+  ct.fillText(label,r.x+r.w/2,r.y+r.h/2);
+}
+// Клик по игровому полю (координаты уже в системе макета)
+function boardClick(p){
+  const L=boardLayout();
+  if(inRect(p,L.hint)){ useHint(); return; }
+  if(G.phase==='captureSelect'&&G.pendingCapture?.owner==='player'){
+    for(const t of tableLayout(L)){
+      if(inRect(p,{x:t.x,y:t.y,w:t.w,h:t.h})){ playerResolveCapture(t.card.id); return; }
+    }
+    return;
+  }
+  if(G.phase==='choose'){
+    const {stop,koi}=choiceButtons(L);
+    if(inRect(p,stop)) playerChoose(true);
+    else if(inRect(p,koi)) playerChoose(false);
+    return;
+  }
+  if(G.phase==='select'&&G.turn==='player'){
+    for(const {card,i,x,y} of playerHandLayout(L)){
+      const yy=y+(G.sel===i?-30:0);
+      if(inRect(p,{x,y:yy-10,w:BCW,h:BCH+20})){
+        if(G.sel===i){ playerPlay(i); }
+        else{ G.sel=i; G.msg=`Выбрана карта: месяц ${card.m}. Нажмите ещё раз — сыграть`; draw(); }
+        return;
+      }
+    }
+    G.sel=null;draw();
+  }
+}
+resizeCanvas();
+window.addEventListener('resize',()=>{resizeCanvas();draw();});
+if(window.Telegram&&window.Telegram.WebApp){
+  const _tg=window.Telegram.WebApp;
+  ['viewportChanged','safeAreaChanged','contentSafeAreaChanged','fullscreenChanged']
+    .forEach(ev=>_tg.onEvent(ev,()=>{resizeCanvas();draw();}));
+}
 
 // ── Месяцы ───────────────────────────────────────────────────────
 const MON=[
@@ -1535,18 +1797,13 @@ function runRuleSanityChecks(){
 
 // ── Рисование ────────────────────────────────────────────────────
 function draw(){
-  ct.clearRect(0,0,W,H);
-  ct.fillStyle='#0a0603';ct.fillRect(0,0,W,H);
-  if(G.phase==='start'||G.phase==='gameover'){drawOverlay();return;}
-  if(G.phase==='log'){drawEventLogScreen();return;}
-  drawHeader();
-  drawAIHand();
-  drawTable();
-  drawDeck();
-  drawCapSummary();
-  drawPlayerHand();
-  drawMsgBar();
-  if(G.phase==='choose')    drawChoiceBtns();
+  ct.setTransform(1,0,0,1,0,0);
+  ct.fillStyle='#0a0603';ct.fillRect(0,0,cv.width,cv.height);
+  if(G.phase==='start'||G.phase==='gameover'){setLegacyTransform();drawOverlay();return;}
+  if(G.phase==='log'){setLegacyTransform();drawEventLogScreen();return;}
+  setBoardTransform();
+  drawBoard();
+  setLegacyTransform();
   if(G.phase==='roundover') drawRoundOver();
   if(KOIKOI_POPUP) drawKoiKoiPopup();
   persistState();
@@ -1556,7 +1813,7 @@ function drawKoiKoiPopup(){
   const col=isAi?'#c04040':'#70e870';
   const who=isAi?'ИИ':'ВЫ';
   ct.save();
-  ct.fillStyle='rgba(4,2,1,.55)';ct.fillRect(0,0,W,H);
+  dimScreen('rgba(4,2,1,.55)');
   const cy=H*0.42,cw=300,ch=104;
   ct.shadowColor=col;ct.shadowBlur=28;
   ct.fillStyle='rgba(10,6,3,.92)';
@@ -1669,28 +1926,52 @@ function getCardImg(card){
   return cardImgCache[name];
 }
 
-function drawCard(x,y,card,face=true,sel=false){
+// Рубашка карты: файл cards/back.(png|jpg|svg), если есть, иначе рисуется
+const cardBackEntry=(()=>{
+  const e={img:new Image(),loaded:false};let i=0;
+  e.img.onload=()=>{e.loaded=true;draw();};
+  e.img.onerror=()=>{ if(i<CARD_IMG_EXT.length) e.img.src=CARD_IMG_BASE+'back.'+CARD_IMG_EXT[i++]; };
+  e.img.onerror();
+  return e;
+})();
+// Картинка в слот карты: если пропорции совпадают (±6%) — на весь слот,
+// иначе вписывается по центру на фоне цвета месяца (встроенные SVG 120×160
+// шире слота 190×310 — не растягиваем их).
+function drawFitted(img,x,y,w,h,bg){
+  const ia=img.naturalWidth/img.naturalHeight, sa=w/h;
+  if(!ia||Math.abs(ia/sa-1)<0.06){ct.drawImage(img,x,y,w,h);return;}
+  ct.fillStyle=bg;ct.fillRect(x,y,w,h);
+  if(ia>sa){const dh=w/ia;ct.drawImage(img,x,y+(h-dh)/2,w,dh);}
+  else{const dw=h*ia;ct.drawImage(img,x+(w-dw)/2,y,dw,h);}
+}
+function drawCard(x,y,card,face=true,sel=false,w=CW,h=CH){
   ct.save();
-  if(sel){ct.shadowColor='rgba(255,240,80,.95)';ct.shadowBlur=20;}
+  const lw=Math.max(1.5,w/40);
+  if(sel){ct.shadowColor='rgba(255,240,80,.95)';ct.shadowBlur=w*0.4;}
   if(!face){
-    const g=ct.createLinearGradient(x,y,x+CW,y+CH);
+    if(cardBackEntry.loaded){ drawFitted(cardBackEntry.img,x,y,w,h,'#180e48'); ct.restore(); return; }
+    const g=ct.createLinearGradient(x,y,x+w,y+h);
     g.addColorStop(0,'#2a1a6a');g.addColorStop(1,'#180e48');
-    ct.fillStyle=g;ct.fillRect(x,y,CW,CH);
-    ct.strokeStyle='#5a4aaa';ct.lineWidth=2;ct.strokeRect(x+2,y+2,CW-4,CH-4);
+    ct.fillStyle=g;ct.fillRect(x,y,w,h);
+    ct.shadowBlur=0;
+    ct.strokeStyle='#5a4aaa';ct.lineWidth=lw*1.3;ct.strokeRect(x+w*0.04,y+w*0.04,w*0.92,h-w*0.08);
+    const cs=w/3, rs=h/5;
     for(let i=0;i<3;i++)for(let j=0;j<5;j++){
-      if((i+j)%2===0){ct.fillStyle='rgba(255,255,255,.06)';ct.fillRect(x+4+i*17,y+4+j*15,17,15);}
+      if((i+j)%2===0){ct.fillStyle='rgba(255,255,255,.06)';ct.fillRect(x+i*cs,y+j*rs,cs,rs);}
     }
     ct.restore();return;
   }
   const entry=getCardImg(card);
+  const m=MON[card.m-1];
   if(entry.loaded){
-    ct.drawImage(entry.img,x,y,CW,CH);
-    ct.strokeStyle='rgba(0,0,0,.5)';ct.lineWidth=1.5;ct.strokeRect(x,y,CW,CH);
+    drawFitted(entry.img,x,y,w,h,m.c);
+    ct.shadowBlur=0;
+    ct.strokeStyle='rgba(0,0,0,.5)';ct.lineWidth=lw;ct.strokeRect(x,y,w,h);
   }else{
-    // Пока картинка грузится — временная заглушка на основе старого стиля
-    const m=MON[card.m-1];
-    ct.fillStyle=m.c;ct.fillRect(x,y,CW,CH);
-    ct.strokeStyle='rgba(0,0,0,.6)';ct.lineWidth=2;ct.strokeRect(x,y,CW,CH);
+    // Пока картинка грузится — временная заглушка цвета месяца
+    ct.fillStyle=m.c;ct.fillRect(x,y,w,h);
+    ct.shadowBlur=0;
+    ct.strokeStyle='rgba(0,0,0,.6)';ct.lineWidth=lw;ct.strokeRect(x,y,w,h);
   }
   ct.restore();
 }
@@ -1710,229 +1991,6 @@ function lighten(h,n){
   return`rgb(${Math.min(255,r+n)},${Math.min(255,g+n)},${Math.min(255,b+n)})`;
 }
 
-function drawHeader(){
-  ct.fillStyle='rgba(0,0,0,.7)';ct.fillRect(0,0,W,58);
-  ct.font='bold 16px Georgia';ct.textBaseline='middle';
-  ct.fillStyle='#f0e8d0';ct.textAlign='left';
-  ct.fillText(`ВЫ:  ${G.scores[0]} очков`,18,30);
-  ct.fillStyle='#c04040';ct.textAlign='right';
-  ct.fillText(`ИИ:  ${G.scores[1]} очков`,W-18,30);
-  // Меньше кегль — иначе на трёхзначном счёте текст залезает на счёт
-  // игроков по обе стороны (было измерено: 16px здесь давал реальное
-  // наложение уже при счёте «0», не только визуально казалось).
-  ct.font='bold 13px Georgia';ct.fillStyle='#c9a227';ct.textAlign='center';
-  ct.fillText(`— Раунд ${G.round}, до ${G.targetScore} очков —`,W/2,30);
-  ct.font='12px Georgia';
-  if(G.turn==='player'&&G.phase==='select'){ct.fillStyle='#80d060';ct.textAlign='left';ct.fillText('▶ ваш ход',18,48);}
-  else if(G.turn==='ai'){ct.fillStyle='#c06060';ct.textAlign='right';ct.fillText('ИИ думает ▶',W-18,48);}
-  if(G.koiKoi||G.aKoiKoi){ct.fillStyle='#c9a227';ct.textAlign='center';ct.fillText('★ Мяу-Мяу в игре!',W/2+80,48);}
-  // Кнопки сложности: Easy / Normal / Hard / Мастер
-  const dlabels=['1','2','3','4'];
-  const dnames=['Easy','Normal','Hard','Мастер'];
-  const bw=70,bh=20,gap=5,totalW=4*(bw+gap)-gap;
-  const bx0=(W-totalW)/2;
-  dlabels.forEach((lbl,d)=>{
-    const bx=bx0+d*(bw+gap), by=34;
-    const active=DIFF===d+1;
-    ct.fillStyle=active?'rgba(201,162,39,.4)':'rgba(30,20,5,.7)';
-    ct.strokeStyle=active?'#c9a227':'#5a3a10';ct.lineWidth=1.5;
-    ct.beginPath();rr(bx,by,bw,bh,4);ct.fill();ct.stroke();
-    ct.fillStyle=active?'#f0d070':'#5a4020';
-    ct.font=(active?'bold ':'')+'9px Georgia';
-    ct.textAlign='center';ct.textBaseline='middle';
-    ct.fillText((active?dnames[d]:lbl),bx+bw/2,by+bh/2);
-  });
-  // Кнопка подсказки (💡)
-  const hbx=W-40,hby=4,hbw=34,hbh=24;
-  ct.fillStyle='rgba(201,162,39,.35)';ct.strokeStyle='#c9a227';ct.lineWidth=1.5;
-  ct.beginPath();rr(hbx,hby,hbw,hbh,5);ct.fill();ct.stroke();
-  ct.fillStyle='#f0d070';ct.font='13px Georgia';
-  ct.textAlign='center';ct.textBaseline='middle';
-  ct.fillText(hintsOwned>0?`💡${hintsOwned}`:'💡',hbx+hbw/2,hby+hbh/2);
-}
-
-// Рука ИИ — плотно внахлёст в один ряд (карты рубашкой вверх, читать
-// на них всё равно нечего; экономит горизонтальное место под колоду).
-const AI_GAP = Math.round(CW*0.4);
-function drawAIHand(){
-  ct.fillStyle='rgba(255,255,255,.3)';ct.font='13px Georgia';
-  ct.textAlign='left';ct.textBaseline='top';
-  ct.fillText(`Рука ИИ:  ${G.aHand.length} карт`,HX,YAI-14);
-  G.aHand.forEach((_,i)=>{
-    const hl=i===G.aiHL;
-    const x=HX+i*AI_GAP;
-    if(hl){ct.save();ct.shadowColor='rgba(255,120,60,.9)';ct.shadowBlur=22;}
-    // Подсвеченная карта показывается лицом вверх
-    // showFace=true только когда карта подсвечена И известна (лицом вверх)
-    const showFace=hl&&!!G.aiCard;
-    drawCard(x,YAI+(hl?-14:0), showFace?G.aiCard:null, showFace);
-    if(hl){
-      ct.strokeStyle='rgba(255,150,60,.9)';ct.lineWidth=3;
-      ct.strokeRect(x-2,YAI-16,CW+4,CH+4);
-      ct.restore();
-    }
-  });
-}
-
-function drawTable(){
-  // 3 ряда — не лишний буфер: headless-прогонами подтверждено, что стол
-  // реально доходит до 11 карт (5+5+1) за партию, не только до 8.
-  ct.fillStyle='rgba(0,0,0,.25)';ct.fillRect(TX-8,YTAB-16,5*(CW+CG)+6,3*(CH+CG)+16);
-  ct.fillStyle='rgba(255,255,255,.3)';ct.font='13px Georgia';
-  ct.textAlign='left';ct.textBaseline='top';
-  ct.fillText(`На столе:  ${G.table.length} карт`,TX,YTAB-18);
-  const sorted=[...G.table].sort((a,b)=>a.m-b.m);
-  sorted.forEach((card,i)=>{
-    const row=Math.floor(i/5), col=i%5;
-    const tx=TX+col*(CW+CG), ty=YTAB+row*(CH+CG);
-    const isTarget=G.aiTargets&&G.aiTargets.some(t=>t.id===card.id);
-    if(isTarget){
-      ct.save();ct.shadowColor='rgba(255,160,40,.9)';ct.shadowBlur=20;
-      ct.strokeStyle='rgba(255,160,40,.9)';ct.lineWidth=3;
-      ct.strokeRect(tx-3,ty-3,CW+6,CH+6);ct.restore();
-    }
-    drawCard(tx,ty,card,true,false);
-  });
-}
-
-// Колода — рядом с рукой ИИ (тот же ряд, справа), над столом. Раньше
-// стояла справа от стола — по просьбе пользователя перенесена наверх,
-// ближе к оппоненту, вместо середины поля.
-function drawDeck(){
-  const dx=W-HX-CW, dy=YAI;
-  ct.fillStyle='rgba(255,255,255,.25)';ct.font='13px Georgia';
-  ct.textAlign='center';ct.textBaseline='bottom';
-  ct.fillText('Колода',dx+CW/2,dy-4);
-
-  // Превью карты из колоды (во время хода ИИ) — слева от колоды,
-  // в том же ряду (сверху места нет — там шапка с кнопками сложности).
-  if(G.aiPreview){
-    const px=dx-CW-16;
-    drawCard(px,dy,G.aiPreview,true,false);
-    ct.strokeStyle='rgba(255,200,80,.8)';ct.lineWidth=2;ct.setLineDash([5,4]);
-    ct.beginPath();ct.moveTo(px+CW+2,dy+CH/2);ct.lineTo(dx-4,dy+CH/2);ct.stroke();
-    ct.setLineDash([]);
-    ct.fillStyle='rgba(255,200,80,.8)';
-    ct.beginPath();ct.moveTo(dx-2,dy+CH/2);ct.lineTo(dx-12,dy+CH/2-6);ct.lineTo(dx-12,dy+CH/2+6);ct.closePath();ct.fill();
-  }
-
-  if(G.deck.length>0){
-    drawCard(dx,dy,null,false);
-    ct.fillStyle='rgba(255,255,255,.7)';ct.font='bold 14px Georgia';
-    ct.textAlign='center';ct.textBaseline='top';
-    ct.fillText(G.deck.length,dx+CW/2,dy+CH+5);
-  }else{
-    ct.fillStyle='rgba(255,255,255,.15)';ct.fillRect(dx,dy,CW,CH);
-    ct.fillStyle='rgba(255,255,255,.3)';ct.font='12px Georgia';
-    ct.textAlign='center';ct.textBaseline='middle';
-    ct.fillText('пусто',dx+CW/2,dy+CH/2);
-  }
-}
-
-function drawCapSummary(){
-  // Счётная строка
-  function countLine(cap,align,x,col){
-    const B=cap.filter(c=>c.t==='bright').length,A=cap.filter(c=>c.t==='animal').length;
-    const R=cap.filter(c=>c.t==='ribbon').length,P=cap.filter(c=>c.t==='plain').length;
-    const pts=yakuPts(getYaku(cap));
-    ct.fillStyle=col;ct.font='13px Georgia';ct.textAlign=align;ct.textBaseline='middle';
-    ct.fillText(`👑${B}  🧸${A}  🎀${R}  🐾${P}  =  ${pts} оч.`,x,YCAP+10);
-  }
-  ct.fillStyle='rgba(0,0,0,.3)';ct.fillRect(0,YCAP-2,W,22);
-  ct.fillStyle='rgba(255,255,255,.35)';ct.font='bold 13px Georgia';
-  ct.textAlign='left';ct.textBaseline='middle';ct.fillText('ВЫ:',HX,YCAP+10);
-  countLine(G.pCap,'left',HX+38,'rgba(255,255,255,.85)');
-  ct.fillStyle='rgba(200,80,80,.45)';ct.textAlign='right';ct.fillText('ИИ:',W-HX,YCAP+10);
-  countLine(G.aCap,'right',W-HX-38,'rgba(220,150,150,.7)');
-
-  // Панель прогресса
-  const cap=G.pCap;
-  const has=(m,sub,t)=>cap.some(c=>c.m===m&&(!sub||c.sub===sub)&&(!t||c.t===t));
-  const rows=[
-    {label:'Ino-Shika-Cho',items:[
-      {n:'7 Boar',ok:has(7,'boar')},{n:'10 Deer',ok:has(10,'deer')},{n:'6 Butterfly',ok:has(6,'butterfly')}]},
-    {label:'Akatan',items:[
-      {n:'1 Poetry',ok:has(1,'poetry')},{n:'2 Poetry',ok:has(2,'poetry')},{n:'3 Poetry',ok:has(3,'poetry')}]},
-    {label:'Aotan',items:[
-      {n:'6 Blue',ok:has(6,'blue')},{n:'9 Blue',ok:has(9,'blue')},{n:'10 Blue',ok:has(10,'blue')}]},
-    {label:'Brights',items:[
-      {n:'1 Crane',ok:has(1,null,'bright')},{n:'3 Curtain',ok:has(3,null,'bright')},
-      {n:'8 Moon',ok:has(8,null,'bright')},{n:'11 Rain Man',ok:has(11,null,'bright')},{n:'12 Phoenix',ok:has(12,null,'bright')}]},
-    {label:'Sake yaku',items:[
-      {n:'3 Curtain',ok:has(3,null,'bright')},{n:'8 Moon',ok:has(8,null,'bright')},{n:'9 Sake',ok:has(9,'sake')}]},
-  ];
-  ct.fillStyle='rgba(0,0,0,.38)';ct.fillRect(4,YPROG-2,W-8,130);
-  ct.fillStyle='rgba(201,162,39,.6)';ct.font='bold 11px Georgia';
-  ct.textAlign='center';ct.textBaseline='top';
-  ct.fillText('── прогресс к яку ──',W/2,YPROG+1);
-  const RH=22,LW=110;
-  rows.forEach((row,ri)=>{
-    const ry=YPROG+16+ri*RH;
-    const done=row.items.every(i=>i.ok);
-    ct.fillStyle=done?'#70e870':'#c9a227';
-    ct.font='bold 12px Georgia';ct.textAlign='left';ct.textBaseline='middle';
-    ct.fillText(row.label+':',8,ry+RH/2);
-    const iw=Math.floor((W-HX-LW-8)/row.items.length);
-    row.items.forEach((item,ii)=>{
-      ct.fillStyle=item.ok?'#70e870':'rgba(255,255,255,.3)';
-      ct.font=(item.ok?'bold ':'')+'11px Georgia';
-      ct.fillText((item.ok?'✓ ':'✗ ')+item.n,8+LW+ii*iw,ry+RH/2);
-    });
-  });
-}
-
-// Рука игрока — 2 ряда, отсортированные по месяцу для читаемости.
-// ВАЖНО: сам G.pHand не переупорядочивается (это ломало бы индексы,
-// на которые завязаны G.sel/hintActive/playerPlay/splice) — сортировка
-// только для расчёта позиций на экране; исходный индекс `i` сохраняется
-// и используется как раньше. Используется и здесь, и в обработчике
-// клика (см. cv.addEventListener) — одна и та же геометрия для отрисовки
-// и хит-теста, чтобы они не могли разойтись.
-function playerHandLayout(){
-  const n=G.pHand.length;
-  if(!n) return [];
-  const cols=Math.max(1,Math.ceil(n/2));
-  const rowW=cols*(CW+CG)-CG;
-  const startX=(W-rowW)>>1;
-  return G.pHand
-    .map((card,i)=>({card,i}))
-    .sort((a,b)=>a.card.m-b.card.m||(a.i-b.i))
-    .map((e,idx)=>({
-      card:e.card, i:e.i,
-      x:startX+(idx%cols)*(CW+CG),
-      y:YPH+Math.floor(idx/cols)*(CH+CG)
-    }));
-}
-function drawPlayerHand(){
-  ct.fillStyle='rgba(255,255,255,.3)';ct.font='13px Georgia';
-  ct.textAlign='center';ct.textBaseline='top';
-  ct.fillText('Ваша рука (по месяцам):',W/2,YPH-18);
-  playerHandLayout().forEach(({card,i,x,y})=>{
-    const sel=G.sel===i&&(G.phase==='select'||G.phase==='choose');
-    const yy=y+(sel?-10:0);
-    drawCard(x,yy,card,true,sel);
-    if(hintActive===i){
-      ct.save();ct.strokeStyle='rgba(80,220,255,.95)';ct.lineWidth=3;
-      ct.shadowColor='rgba(80,220,255,.9)';ct.shadowBlur=16;
-      ct.strokeRect(x-3,yy-3,CW+6,CH+6);ct.restore();
-    }
-  });
-}
-
-function drawMsgBar(){
-  ct.fillStyle='rgba(0,0,0,.6)';ct.fillRect(0,YMSG,W,52);
-  // Длина G.msg сильно гуляет (короткие статусы vs. длинные подписи вида
-  // "Выбрана карта: месяц N, тип X. Нажмите снова для хода.") — 17px
-  // на длинных строках вылезал за левый край холста (проверено скриншотом
-  // при выборе карты), поэтому кегль подбирается по факту, не фиксирован.
-  const longMsg=G.msg.length>34;
-  ct.fillStyle='#f0d878';ct.font=(longMsg?'bold 13px':'bold 16px')+' Georgia';
-  ct.textAlign='center';ct.textBaseline='middle';
-  ct.fillText(G.msg,W/2,YMSG+18);
-  ct.fillStyle='#6a5830';ct.font='11px Georgia';
-  ct.fillText('👑=20оч  🧸=10оч  🎀=5оч  🐾=1оч    |    Яку: Короны·Игрушки·Бантики·С миской',W/2,YMSG+38);
-}
-
 function mkbtn(x,y,w,h,label,bg,bc){
   ct.fillStyle=bg;ct.strokeStyle=bc;ct.lineWidth=2.5;
   ct.beginPath();rr(x,y,w,h,8);ct.fill();ct.stroke();
@@ -1946,16 +2004,8 @@ function rr(x,y,w,h,r){
   ct.arcTo(x,y,x+w,y,r);ct.closePath();
 }
 
-function drawChoiceBtns(){
-  ct.fillStyle='rgba(255,255,255,.3)';ct.font='13px Georgia';
-  ct.textAlign='center';ct.textBaseline='top';
-  ct.fillText('Выберите:',W/2,YBTN-18);
-  mkbtn(14,YBTN,W/2-20,34,'✋  СТОП','#1a4a10','#50b030');
-  mkbtn(W/2+6,YBTN,W/2-20,34,'🐱  МЯУ-МЯУ','#4a1010','#c04040');
-}
-
 function drawRoundOver(){
-  ct.fillStyle='rgba(0,0,0,.78)';ct.fillRect(0,0,W,H);
+  dimScreen('rgba(0,0,0,.78)');
   ct.fillStyle='#f0d070';ct.font='bold 22px Georgia';
   ct.textAlign='center';ct.textBaseline='middle';
   ct.fillText(G.msg,W/2,H/2-34);
@@ -1970,7 +2020,6 @@ function drawRoundOver(){
 // ── Экран журнала партий ────────────────────────────────────────
 let ACTION_FLASH=null; // 'download'|'copy'|'clear' — кратковременная подсветка кнопки
 function drawEventLogScreen(){
-  ct.fillStyle='#0a0603';ct.fillRect(0,0,W,H);
   ct.textAlign='center';
   ct.fillStyle='#c9a227';ct.font='bold 20px Georgia';ct.textBaseline='top';
   ct.fillText('Журнал событий',W/2,18);
@@ -2001,8 +2050,13 @@ function drawEventLogScreen(){
   ct.fillText('[ НАЗАД ]',W/2,H-24);
 }
 
+function diffButtons(){
+  const names=['Easy','Normal','Hard','Мастер'],bw=86,bh=30,gap=8;
+  const x0=(W-(4*bw+3*gap))/2;
+  return names.map((name,i)=>({d:i+1,name,x:x0+i*(bw+gap),y:H-232,w:bw,h:bh}));
+}
 function drawOverlay(){
-  ct.fillStyle='rgba(4,2,1,.9)';ct.fillRect(0,0,W,H);
+  dimScreen('rgba(4,2,1,.9)');
   ct.textAlign='center';
   if(G.phase==='gameover'){
     const win=G.scores[0]>G.scores[1];
@@ -2053,6 +2107,18 @@ function drawOverlay(){
       ct.fillStyle='rgba(255,255,255,.4)';ct.font='13px Georgia';
       ct.fillText('Загрузка...',W/2,H-140);
     }else{
+      // Сложность — выбирается здесь, на игровом поле её больше нет
+      ct.fillStyle='rgba(255,255,255,.5)';ct.font='12px Georgia';ct.textBaseline='middle';
+      ct.fillText('Сложность',W/2,diffButtons()[0].y-12);
+      diffButtons().forEach(b=>{
+        const active=DIFF===b.d;
+        ct.fillStyle=active?'rgba(201,162,39,.4)':'rgba(30,20,5,.7)';
+        ct.strokeStyle=active?'#c9a227':'#5a3a10';ct.lineWidth=1.5;
+        ct.beginPath();rr(b.x,b.y,b.w,b.h,6);ct.fill();ct.stroke();
+        ct.fillStyle=active?'#f0d070':'#8a7040';ct.font=(active?'bold ':'')+'12px Georgia';
+        ct.fillText(b.name,b.x+b.w/2,b.y+b.h/2);
+      });
+      ct.font='bold 15px Georgia';
       const bw=220,bh=38,bx=(W-bw)/2;
       const by1=H-186, by2=H-134; // две кнопки с зазором между ними
       // Кнопка "Новая игра"
@@ -2083,8 +2149,9 @@ function drawOverlay(){
 // ── События ───────────────────────────────────────────────────────
 cv.addEventListener('click',e=>{
   const rect=cv.getBoundingClientRect();
-  const mx=(e.clientX-rect.left)*(W/rect.width);
-  const my=(e.clientY-rect.top)*(H/rect.height);
+  const cx=e.clientX-rect.left, cy=e.clientY-rect.top;
+  // Меню, журнал и экраны между раундами — в старой системе 450×800 по центру
+  const {x:mx,y:my}=toLegacy(cx,cy);
 
   if(G.phase==='log'){
     const bw=260,bh=38,bx=(W-bw)/2;
@@ -2095,18 +2162,14 @@ cv.addEventListener('click',e=>{
     G.phase='start'; draw(); return; // клик мимо кнопок — назад
   }
 
-  // Шапка (сложность, подсказка) не рисуется на start/gameover — не перехватываем клики там
-  if(G.phase!=='start'&&G.phase!=='gameover'){
-    const _bw=70,_gap=5,_total=4*(_bw+_gap)-_gap,_bx0=(W-_total)/2;
-    for(let d=0;d<4;d++){
-      const bx=_bx0+d*(_bw+_gap);
-      if(mx>=bx&&mx<=bx+_bw&&my>=34&&my<=54){DIFF=d+1;try{localStorage.setItem(DIFF_STORAGE_KEY,String(DIFF));}catch(e){}draw();return;}
-    }
-    if(mx>=W-40&&mx<=W-6&&my>=4&&my<=28){ useHint(); return; }
-  }
-
   if(G.phase==='start'){
     if(TG_USER && !SYNC_DONE){ return; } // ждём ответа сервера — клики игнорируем
+    for(const b of diffButtons()){
+      if(mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h){
+        DIFF=b.d;try{localStorage.setItem(DIFF_STORAGE_KEY,String(DIFF));}catch(e){}
+        draw();return;
+      }
+    }
     const bw=220,bx=(W-bw)/2,bh=38;
     const by1=H-186, by2=H-134, by3=by2+bh+14;
     if(mx>=bx&&mx<=bx+bw&&my>=by3&&my<=by3+bh){ G.phase='log'; draw(); return; }
@@ -2128,33 +2191,8 @@ cv.addEventListener('click',e=>{
   if(G.phase==='gameover'){newGame();return;}
   if(G.phase==='roundover'){G.round++;newRound();return;}
 
-  if(G.phase==='captureSelect'&&G.pendingCapture?.owner==='player'){
-    const sorted=[...G.table].sort((a,b)=>a.m-b.m);
-    for(let i=0;i<sorted.length;i++){
-      const row=Math.floor(i/5),col=i%5;
-      const x=TX+col*(CW+CG),y=YTAB+row*(CH+CG);
-      if(mx>=x&&mx<=x+CW&&my>=y&&my<=y+CH){playerResolveCapture(sorted[i].id);return;}
-    }
-    return;
-  }
-
-  if(G.phase==='choose'){
-    if(mx>=14&&mx<=W/2-20&&my>=YBTN&&my<=YBTN+36) playerChoose(true);
-    if(mx>=W/2+6&&mx<=W-14&&my>=YBTN&&my<=YBTN+36) playerChoose(false);
-    return;
-  }
-
-  if((G.phase==='select')&&G.turn==='player'){
-    for(const {card,i,x,y} of playerHandLayout()){
-      const yy=y+(G.sel===i?-10:0);
-      if(mx>=x&&mx<=x+CW&&my>=yy-6&&my<=yy+CH+6){
-        if(G.sel===i){ playerPlay(i); }
-        else{ G.sel=i; G.msg=`Выбрана карта: месяц ${card.m}, тип ${card.t}.  Нажмите снова для хода.`; draw(); }
-        return;
-      }
-    }
-    G.sel=null;draw();
-  }
+  if(KOIKOI_POPUP) return;
+  boardClick(toBoard(cx,cy));
 });
 
 // ── Старт ─────────────────────────────────────────────────────────
