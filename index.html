@@ -346,7 +346,7 @@ function drawBoard(){
   drawYakuCells(L.cellsAI,G.aCap,true);
   drawBoardDeck(L);
   drawBoardTable(L);
-  drawYakuCells(L.cellsP,G.pCap,false);
+  drawYakuPanel(L,G.pCap);
   drawBoardHand(L);
   drawBoardBand(L);
 }
@@ -458,6 +458,100 @@ function miniCardsLayout(n,aw,ah){
     if(w>best.w) best={k,w,h,step:k>1?Math.min(w+6,(aw-w)/(k-1)):0};
   }
   return best;
+}
+// ── Панель яку игрока: 12 ячеек-иконок (по одной на яку) ──────────
+// Вместо самих карт — слоты цвета месяца: взятые горят, недостающие бледные.
+// Тан/Тане/Касу — просто счётчик. Собранное яку — золотая рамка.
+// 8 ячеек — в зоне над рукой (2×4), по 2 — слева и справа от руки.
+const YAKU_CELLS=[
+  {n:'Гоко',       need:5, slots:[[1,'bright'],[3,'bright'],[8,'bright'],[11,'bright'],[12,'bright']]},
+  {n:'Сико',       need:4, slots:[[1,'bright'],[3,'bright'],[8,'bright'],[12,'bright']]},
+  {n:'Амэ-Сико',   need:4, slots:[[11,'bright'],[1,'bright'],[3,'bright'],[8,'bright'],[12,'bright']], must:11},
+  {n:'Санко',      need:3, slots:[[1,'bright'],[3,'bright'],[8,'bright'],[12,'bright']]},
+  {n:'Ино-Сика-Тё',need:3, slots:[[7,'animal'],[10,'animal'],[6,'animal']]},
+  {n:'Ханами',     need:2, slots:[[3,'bright'],[9,'animal']]},
+  {n:'Цукими',     need:2, slots:[[8,'bright'],[9,'animal']]},
+  {n:'Тане',       need:5, count:'animal', icon:'🧸'},
+  {n:'Ака-тан',    need:3, slots:[[1,'ribbon'],[2,'ribbon'],[3,'ribbon']]},
+  {n:'Ао-тан',     need:3, slots:[[6,'ribbon'],[9,'ribbon'],[10,'ribbon']]},
+  {n:'Тан',        need:5, count:'ribbon', icon:'🎀'},
+  {n:'Касу',       need:10,count:'plain',  icon:'🐾'},
+];
+function yakuPanelRects(L){
+  const top=L.cellsP, g=10, cw=(top.w-3*g)/4, ch=(top.h-g)/2;
+  const r=[];
+  for(let i=0;i<8;i++) r.push({x:top.x+(i%4)*(cw+g),y:top.y+Math.floor(i/4)*(ch+g),w:cw,h:ch});
+  const hy=L.handY1, hh=L.handY2+BCH-L.handY1, sh=(hh-g)/2;
+  const lw=L.handX-B_GAP/2-L.sx-g, rx=L.handX+4*BCW+3*B_GAP+B_GAP/2+g;
+  [[L.sx,lw],[rx,L.sx+SAFE_W-rx]].forEach(([x,w])=>{
+    for(let j=0;j<2;j++) r.push({x,y:hy+j*(sh+g),w,h:sh});
+  });
+  return r;
+}
+function drawYakuPanel(L,cap){
+  const got=getYaku(cap), rects=yakuPanelRects(L);
+  YAKU_CELLS.forEach((def,i)=>{
+    const r=rects[i]; if(!r||r.w<40||r.h<40) return;
+    const done=got.find(y=>y.n===def.n||y.n.startsWith(def.n+'×'));
+    let have, slots=null;
+    if(def.count){ have=cap.filter(c=>c.t===def.count).length; }
+    else{
+      slots=def.slots.map(([m,t])=>({m,on:cap.some(c=>c.m===m&&c.t===t)}));
+      have=slots.filter(s=>s.on).length;
+      if(def.must&&!slots[0].on) have=Math.min(have,def.need-1);
+    }
+    const near=!done&&have===def.need-1;
+    // фон и рамка
+    ct.save();
+    if(done){ct.shadowColor='rgba(255,210,80,.9)';ct.shadowBlur=30;}
+    ct.fillStyle=done?'rgba(120,90,10,.55)':'rgba(0,0,0,.4)';
+    ct.beginPath();rr(r.x,r.y,r.w,r.h,16);ct.fill();ct.restore();
+    ct.strokeStyle=done?'#f0d070':near?'rgba(255,150,60,.85)':'rgba(255,255,255,.15)';
+    ct.lineWidth=done?5:near?4:2;ct.beginPath();rr(r.x,r.y,r.w,r.h,16);ct.stroke();
+    // заголовок: имя и очки / прогресс
+    const tall=r.h>r.w*1.4, pad=10;
+    const fs=Math.round(Math.min(28,r.w/(tall?4.4:8.5)));
+    ct.textBaseline='top';ct.textAlign='left';
+    ct.font=`bold ${fs}px Georgia`;ct.fillStyle=done?'#ffe9a0':'rgba(255,255,255,.85)';
+    ct.fillText(def.n,r.x+pad,r.y+pad);
+    ct.textAlign='right';ct.font=`bold ${fs}px Georgia`;
+    ct.fillStyle=done?'#ffe9a0':'rgba(255,255,255,.55)';
+    const prog=done?`+${done.p}`:`${Math.min(have,def.need)}/${def.need}`;
+    if(tall){ct.textAlign='left';ct.fillText(prog,r.x+pad,r.y+pad+fs+6);}
+    else ct.fillText(prog,r.x+r.w-pad,r.y+pad);
+    const ay=r.y+pad+(tall?2:1)*(fs+6)+4, ah=r.y+r.h-pad-ay, aw=r.w-2*pad;
+    if(def.count){
+      // счётчик: большая цифра + полоска до цели
+      const n=have;
+      ct.textAlign='center';ct.textBaseline='middle';
+      ct.font=`bold ${Math.round(Math.min(ah*0.6,aw*0.45))}px Georgia`;
+      ct.fillStyle=done?'#ffe9a0':'#fff';
+      ct.fillText(`${def.icon} ${n}`,r.x+r.w/2,ay+ah*0.4);
+      const bw=aw, bh=Math.max(8,ah*0.12), by=ay+ah-bh;
+      ct.fillStyle='rgba(255,255,255,.15)';ct.beginPath();rr(r.x+pad,by,bw,bh,bh/2);ct.fill();
+      ct.fillStyle=done?'#f0d070':'#7fc8ff';ct.beginPath();rr(r.x+pad,by,bw*Math.min(1,n/def.need),bh,bh/2);ct.fill();
+      return;
+    }
+    // слоты цвета месяца: в ряд (широкая ячейка) или столбиком (узкая)
+    const k=slots.length, sg=6;
+    let sw,sh;
+    if(tall){ sh=Math.min((ah-(k-1)*sg)/k, aw*0.75); sw=Math.min(aw,sh*1.3); }
+    else    { sw=Math.min((aw-(k-1)*sg)/k, ah*0.8); sh=Math.min(ah,sw*1.25); }
+    slots.forEach((s,j)=>{
+      const x=tall?r.x+(r.w-sw)/2:r.x+pad+j*(sw+sg)+(aw-(k*sw+(k-1)*sg))/2;
+      const y=tall?ay+j*(sh+sg):ay+(ah-sh)/2;
+      ct.globalAlpha=s.on?1:0.22;
+      ct.fillStyle=MON[s.m-1].c;ct.beginPath();rr(x,y,sw,sh,8);ct.fill();
+      ct.globalAlpha=1;
+      ct.strokeStyle=s.on?'rgba(255,255,255,.95)':'rgba(255,255,255,.3)';ct.lineWidth=s.on?3:2;
+      if(!s.on) ct.setLineDash([6,5]);
+      ct.beginPath();rr(x,y,sw,sh,8);ct.stroke();ct.setLineDash([]);
+      ct.fillStyle=s.on?'#fff':'rgba(255,255,255,.45)';
+      ct.font=`bold ${Math.round(Math.min(sw,sh)*0.5)}px Georgia`;
+      ct.textAlign='center';ct.textBaseline='middle';
+      ct.fillText(s.m,x+sw/2,y+sh/2+1);
+    });
+  });
 }
 function drawBoardHand(L){
   playerHandLayout(L).forEach(({card,i,x,y})=>{
