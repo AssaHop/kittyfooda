@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-250 -70 1679 2666" width="1679" height="2666" font-family="Inter,Arial,sans-serif">
+<defs><marker id="a" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker></defs>
+<rect x="-250" y="-70" width="1679" height="2666" fill="#fff"/>
+<text x="-230" y="-30" font-size="30" font-weight="700" fill="#222">KittyFooda · весь экран 1179×2556 · колода над столом · карта 172×230 (3:4), колода ×0,8</text>
+<rect x="0" y="0" width="1179" height="2556" fill="#1b1340" stroke="#333" stroke-width="3"/>
+<rect x="47.160000000000004" y="204.48000000000002" width="1084.68" height="2147.04" fill="none" stroke="#3ccf5a" stroke-width="3" stroke-dasharray="14 10"/>
+<rect x="47.2" y="204.5" width="1084.7" height="80.0" rx="12" fill="#000" fill-opacity="0.3" stroke="#555" stroke-width="3"/>
+<text x="67.2" y="256.5" text-anchor="start" font-size="34" font-weight="700" fill="#f0e8d0">ВЫ 0 : 0 ИИ</text>
+<text x="629.5" y="256.5" text-anchor="middle" font-size="30" font-weight="700" fill="#c9a227">Раунд 1 · до 30</text>
+<rect x="931.8" y="212.5" width="200.0" height="64.0" rx="14" fill="#c9a227" fill-opacity="0.35" stroke="#c9a227" stroke-width="3"/>
+<text x="1031.8" y="256.5" text-anchor="middle" font-size="34" font-weight="700" fill="#14306b">💡</text>
+<rect x="47.2" y="294.5" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="133.4" y="417.4" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">ИИ</text>
+<rect x="239.6" y="294.5" width="172.4" height="229.9" rx="8" fill="#ffd9c2" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="325.8" y="417.4" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">ход ИИ</text>
+<rect x="47.2" y="536.4" width="1084.7" height="237.7" rx="14" fill="none" fill-opacity="1" stroke="#f0b13c" stroke-width="3" stroke-dasharray="8 8"/>
+<text x="589.5" y="665.3" text-anchor="middle" font-size="30" font-weight="500" fill="#f0b13c">ячейки яку ИИ · 262</text>
+<rect x="29.5" y="990.1" width="1120.0" height="489.9" rx="30" fill="#2d6b3a" fill-opacity="0.45" stroke="none" stroke-width="3"/>
+<rect x="520.5" y="786.1" width="138.0" height="183.9" rx="8" fill="#bcb3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="589.5" y="886.1" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">колода</text>
+<text x="674.5" y="886.1" text-anchor="start" font-size="22" font-weight="500" fill="#cfd8ff">138×184 (×0,8)</text>
+<rect x="858.5" y="786.1" width="138.0" height="183.9" rx="8" fill="#ffe7a8" fill-opacity="0.25" stroke="#2f6fe0" stroke-width="3" stroke-dasharray="10 8"/>
+<text x="927.5" y="886.1" text-anchor="middle" font-size="22" font-weight="700" fill="#9fb6e8">из колоды</text>
+<rect x="47.2" y="1000.1" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="133.4" y="1123.0" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">стол 1</text>
+<rect x="229.6" y="1000.1" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="315.8" y="1123.0" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">стол 2</text>
+<rect x="412.1" y="1000.1" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="498.3" y="1123.0" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">стол 3</text>
+<rect x="594.5" y="1000.1" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="680.7" y="1123.0" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">стол 4</text>
+<rect x="776.9" y="1000.1" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="0.25" stroke="#2f6fe0" stroke-width="3" stroke-dasharray="10 8"/>
+<text x="863.2" y="1123.0" text-anchor="middle" font-size="22" font-weight="700" fill="#9fb6e8">доп.</text>
+<rect x="959.4" y="1000.1" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="0.25" stroke="#2f6fe0" stroke-width="3" stroke-dasharray="10 8"/>
+<text x="1045.6" y="1123.0" text-anchor="middle" font-size="22" font-weight="700" fill="#9fb6e8">доп.</text>
+<rect x="47.2" y="1240.0" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="133.4" y="1363.0" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">стол 5</text>
+<rect x="229.6" y="1240.0" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="315.8" y="1363.0" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">стол 6</text>
+<rect x="412.1" y="1240.0" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="498.3" y="1363.0" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">стол 7</text>
+<rect x="594.5" y="1240.0" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="680.7" y="1363.0" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">стол 8</text>
+<rect x="776.9" y="1240.0" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="0.25" stroke="#2f6fe0" stroke-width="3" stroke-dasharray="10 8"/>
+<text x="863.2" y="1363.0" text-anchor="middle" font-size="22" font-weight="700" fill="#9fb6e8">доп.</text>
+<rect x="959.4" y="1240.0" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="0.25" stroke="#2f6fe0" stroke-width="3" stroke-dasharray="10 8"/>
+<text x="1045.6" y="1363.0" text-anchor="middle" font-size="22" font-weight="700" fill="#9fb6e8">доп.</text>
+<rect x="47.2" y="1481.9" width="1084.7" height="237.7" rx="14" fill="none" fill-opacity="1" stroke="#f0b13c" stroke-width="3" stroke-dasharray="8 8"/>
+<text x="589.5" y="1610.8" text-anchor="middle" font-size="30" font-weight="500" fill="#f0b13c">ячейки яку игрока · 262</text>
+<rect x="199.6" y="1731.7" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="285.8" y="1854.6" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">рука</text>
+<rect x="402.1" y="1731.7" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="488.3" y="1854.6" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">рука</text>
+<rect x="604.5" y="1731.7" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="690.7" y="1854.6" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">рука</text>
+<rect x="806.9" y="1731.7" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="893.2" y="1854.6" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">рука</text>
+<rect x="199.6" y="1991.6" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="285.8" y="2114.6" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">рука</text>
+<rect x="402.1" y="1991.6" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="488.3" y="2114.6" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">рука</text>
+<rect x="604.5" y="1991.6" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="690.7" y="2114.6" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">рука</text>
+<rect x="806.9" y="1991.6" width="172.4" height="229.9" rx="8" fill="#cfe3ff" fill-opacity="1" stroke="#2f6fe0" stroke-width="3"/>
+<text x="893.2" y="2114.6" text-anchor="middle" font-size="22" font-weight="700" fill="#14306b">рука</text>
+<rect x="47.2" y="2251.5" width="1084.7" height="100.0" rx="20" fill="#5a1a1a" fill-opacity="1" stroke="#c04040" stroke-width="3"/>
+<text x="589.5" y="2313.5" text-anchor="middle" font-size="34" font-weight="700" fill="#fff">✋ СТОП · 🐱 МЯУ-МЯУ / сообщение</text>
+<line x1="589.5" y1="0.0" x2="589.5" y2="204.5" stroke="#1d8a36" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="603.5" y="110.2" text-anchor="start" font-size="24" font-weight="600" fill="#1d8a36">8% · 204</text>
+<line x1="589.5" y1="2351.5" x2="589.5" y2="2556.0" stroke="#1d8a36" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="603.5" y="2461.8" text-anchor="start" font-size="24" font-weight="600" fill="#1d8a36">8% · 204</text>
+<line x1="0.0" y1="150.0" x2="47.2" y2="150.0" stroke="#1d8a36" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="0.0" y="0.0" text-anchor="start" font-size="24" font-weight="600" fill="#1d8a36"></text>
+<text x="-14.0" y="140.0" text-anchor="end" font-size="24" font-weight="600" fill="#1d8a36">4% · 47</text>
+<line x1="1131.8" y1="150.0" x2="1179.0" y2="150.0" stroke="#1d8a36" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="0.0" y="0.0" text-anchor="start" font-size="24" font-weight="600" fill="#1d8a36"></text>
+<text x="1193.0" y="140.0" text-anchor="start" font-size="24" font-weight="600" fill="#1d8a36">4% · 47</text>
+<text x="1131.8" y="190.5" text-anchor="end" font-size="28" font-weight="700" fill="#3ccf5a">зона 92% × 84% · 1085×2147</text>
+<line x1="1199.0" y1="207.5" x2="1199.0" y2="281.5" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="1211.0" y="252.5" text-anchor="start" font-size="24" font-weight="600" fill="#d6249c">шапка 80</text>
+<line x1="1199.0" y1="297.5" x2="1199.0" y2="521.4" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="1211.0" y="417.4" text-anchor="start" font-size="24" font-weight="600" fill="#d6249c">карта ИИ 230</text>
+<line x1="1199.0" y1="527.4" x2="1199.0" y2="783.1" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="1211.0" y="663.3" text-anchor="start" font-size="24" font-weight="600" fill="#d6249c">яку ИИ 262</text>
+<line x1="1199.0" y1="789.1" x2="1199.0" y2="997.1" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="1211.0" y="901.1" text-anchor="start" font-size="24" font-weight="600" fill="#d6249c">колода 214</text>
+<line x1="1199.0" y1="1003.1" x2="1199.0" y2="1466.9" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="1211.0" y="1243.0" text-anchor="start" font-size="24" font-weight="600" fill="#d6249c">стол 470</text>
+<line x1="1199.0" y1="1472.9" x2="1199.0" y2="1728.7" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="1211.0" y="1608.8" text-anchor="start" font-size="24" font-weight="600" fill="#d6249c">яку игрока 262</text>
+<line x1="1199.0" y1="1734.7" x2="1199.0" y2="2218.5" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="1211.0" y="1984.6" text-anchor="start" font-size="24" font-weight="600" fill="#d6249c">рука 490</text>
+<line x1="1199.0" y1="2254.5" x2="1199.0" y2="2348.5" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="1211.0" y="2309.5" text-anchor="start" font-size="24" font-weight="600" fill="#d6249c">полоса 100</text>
+<text x="-230.0" y="1278.0" text-anchor="start" font-size="22" font-weight="500" fill="#888">центр экрана</text>
+<line x1="-60" y1="1278.0" x2="1179" y2="1278.0" stroke="#888" stroke-width="2" stroke-dasharray="4 8"/>
+</svg>
