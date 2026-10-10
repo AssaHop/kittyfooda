@@ -7,10 +7,13 @@ const { chromium } = require('/opt/node-tools/node_modules/playwright');
     await p.goto('file://'+require('path').resolve(__dirname,'../../index.html')); await p.waitForTimeout(200);
     const r = await p.evaluate(() => { newGame(); const L=boardLayout(); const t=tableLayout(L)[0], hd=playerHandLayout(L);
       const px=v=>+(v*VIEW.k*VIEW.dpr).toFixed(1);
-      return {k:+(VIEW.k*VIEW.dpr).toFixed(3), card:[px(BCW),px(BCH)], table0:[px(t.w),px(t.h)],
-        deckLeftFromSafe:px(L.deck.x-L.sx), gapDeckTable:px(L.colX-(L.deck.x+BCW)), gapTable:px(B_GAP),
-        safeW:px(SAFE_W), top:px(L.sTop), topPct:+(L.sTop/L.VH*100).toFixed(1), botPct:+((L.VH-L.sBot)/L.VH*100).toFixed(1),
-        aiFromTop:px(L.ai.y-L.sTop), band:px(L.band.h), aiAlignedHand: L.ai.x===hd[0].x };
+      const T=tableLayout(L);
+      return {k:+(VIEW.k*VIEW.dpr).toFixed(3), card:[px(BCW),px(BCH)], table0:[px(T[0].w),px(T[0].h)],
+        sidePct:+(L.sx/L.VW*100).toFixed(1), topPct:+(L.sTop/L.VH*100).toFixed(1), botPct:+((L.VH-L.sBot)/L.VH*100).toFixed(1),
+        safeW:px(SAFE_W), padPct:+(L.pad/(L.sBot-L.sTop)*100).toFixed(1),
+        gapDeckTable:px(L.colX-(L.deck.x+BCW)), gapX:px(B_GAP), rowW:px(T[3].x+T[3].w-L.sx),
+        tableH3rows:px(L.table.h), cellsGap:px(L.cellsGap), band:px(L.band.h),
+        handCentered:Math.abs(hd[0].x+(hd[3].x+BCW)-L.VW)<0.01, aiAlignedDeck:L.ai.x===L.deck.x };
     });
     console.log(name, JSON.stringify(r)); await p.close();
   }

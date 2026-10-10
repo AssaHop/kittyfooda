@@ -229,19 +229,26 @@ const YPH  = 546;  // Player hand top (2 ряда — см. playerHandLayout)
 const YMSG = 706;  // Message bar
 const YBTN = 762;  // Choice buttons
 
-// ── Игровой стол: раскладка под экран (2026-10-09) ───────────────
-// Макет задан в «референсных» пикселях экрана iPhone 15 (1179×2556,
-// это и есть физические пиксели этого экрана). Пиксельные размеры
-// масштабируются одним коэффициентом k, проценты (отступы сверху/снизу,
-// высота стола) берутся от реальной высоты экрана. Если экран короче
-// (16:9, планшет), k ограничивается высотой, и поле центрируется.
-// Одна функция boardLayout() — и для отрисовки, и для хит-теста кликов.
-const REF_W=1179;          // ширина экрана-образца
-const MIN_REF_H=2340;      // минимальная высота (в реф. px), при которой всё помещается
-const SAFE_W=1100;         // ширина игровой зоны
-const BCW=190, BCH=310;    // карта на столе и в руке
-const B_GAP=20;            // промежуток между картами
-const SAFE_TOP=0.08, SAFE_BOTTOM=0.07, FELT_H=0.40, FELT_W=0.95;
+// ── Игровой стол: раскладка под экран (макет v3, 2026-10-10) ────
+// Макет — docs/ui/layout-v3.png. Экран-образец iPhone 15, 1179×2556
+// «референсных» px (= физические px этого экрана), размеры — доли экрана.
+// Поля экрана 4% → игровая зона 92%; внутри зоны отступ сверху 5% её высоты.
+// Ряд стола: колода, промежуток 2x, 4 карты через x — ровно ширина зоны,
+// отсюда размер карты (x = 30 → 187×280, пропорция 2:3). Место стола —
+// на 3 ряда по 4. Рука 2×4 по центру экрана, под ней полоса «Мяу-Мяу».
+// k — масштаб реф. px → CSS px; если экран короче нужного, k уменьшается
+// по высоте и поле центрируется. Одна boardLayout() — для отрисовки и кликов.
+const REF_W=1179;
+const SAFE_M=0.04;                 // поле экрана с каждой стороны
+const SAFE_W=REF_W*(1-2*SAFE_M);   // 1084.7 — ширина игровой зоны
+const ZONE_PAD=0.05;               // отступ сверху внутри зоны, доля её высоты
+const B_GAP=30;                    // промежуток x между картами
+const BCW=(SAFE_W-5*B_GAP)/5;      // 186.9 — колода + 4 карты + 2x + 3x
+const BCH=BCW*1.5;                 // 280.4
+const TABLE_ROWS=3;                // место стола — на 3 ряда
+const BAND_H=100, BAND_BOTTOM=50;  // полоса сообщений/«Мяу-Мяу» и отступ под ней
+const HEADER_H=80;                 // счёт/раунд/💡 — в верхнем отступе зоны
+const MIN_CELLS=120;               // минимальная высота промежутка под ячейки яку
 
 let VIEW={cssW:450,cssH:800,dpr:1,k:1,VW:REF_W,VH:2556,ls:1,lx:0,ly:0};
 function readTgInsets(){
@@ -255,9 +262,12 @@ function resizeCanvas(){
   const dpr=Math.min(3,window.devicePixelRatio||1);
   cv.style.width=cssW+'px';cv.style.height=cssH+'px';
   cv.width=Math.round(cssW*dpr);cv.height=Math.round(cssH*dpr);
-  const k=Math.min(cssW/REF_W, cssH/MIN_REF_H);
+  const insets=readTgInsets();
+  // k по ширине; если по высоте не помещается (ячейкам яку < MIN_CELLS) — уменьшаем
+  let k=cssW/REF_W;
+  for(let i=0;i<40&&boardLayout({k,VW:cssW/k,VH:cssH/k,insets}).cellsGap<MIN_CELLS;i++) k*=0.97;
   const ls=Math.min(cssW/W, cssH/H); // старые экраны (меню, журнал) — 450×800 по центру
-  VIEW={cssW,cssH,dpr,k,VW:cssW/k,VH:cssH/k,ls,lx:(cssW-W*ls)/2,ly:(cssH-H*ls)/2,insets:readTgInsets()};
+  VIEW={cssW,cssH,dpr,k,VW:cssW/k,VH:cssH/k,ls,lx:(cssW-W*ls)/2,ly:(cssH-H*ls)/2,insets};
 }
 function setBoardTransform(){const v=VIEW;ct.setTransform(v.dpr*v.k,0,0,v.dpr*v.k,0,0);}
 function setLegacyTransform(){const v=VIEW;ct.setTransform(v.dpr*v.ls,0,0,v.dpr*v.ls,v.dpr*v.lx,v.dpr*v.ly);}
@@ -271,39 +281,40 @@ function dimScreen(color){
 function toBoard(cx,cy){return {x:cx/VIEW.k, y:cy/VIEW.k};}
 function toLegacy(cx,cy){return {x:(cx-VIEW.lx)/VIEW.ls, y:(cy-VIEW.ly)/VIEW.ls};}
 
-function boardLayout(){
-  const {VW,VH,k,insets}=VIEW;
+function boardLayout(V=VIEW){
+  const {VW,VH,k,insets}=V;
   const sx=(VW-SAFE_W)/2;
-  const sTop=Math.max(VH*SAFE_TOP, (insets?insets.top:0)/k);
-  const sBot=VH-Math.max(VH*SAFE_BOTTOM, (insets?insets.bottom:0)/k);
-  const colX=sx+10+BCW+40;                       // первая колонка стола и руки
-  const band={x:sx,y:sBot-100,w:SAFE_W,h:100};   // кнопки Стоп / Мяу-Мяу, сообщения
-  const handY2=band.y-BCH, handY1=handY2-B_GAP-BCH;
-  const ai={x:colX,y:sTop+80};
-  const midTop=ai.y+BCH, midBot=handY1;
-  const midC=(midTop+midBot)/2;
-  const tableH=2*BCH+B_GAP;
-  const tableY=midC-tableH/2;
-  const gapA=tableY-midTop, gapP=midBot-(tableY+tableH);
-  const pad=Math.min(16,gapA/8);
+  const sTop=Math.max(VH*SAFE_M, (insets?insets.top:0)/k);
+  const sBot=VH-Math.max(VH*SAFE_M, (insets?insets.bottom:0)/k);
+  const pad=(sBot-sTop)*ZONE_PAD;
+  const colX=sx+BCW+2*B_GAP;                     // первая колонка стола
+  const band={x:sx,y:sBot-BAND_BOTTOM-BAND_H,w:SAFE_W,h:BAND_H};
+  const handY2=band.y-B_GAP-BCH, handY1=handY2-B_GAP-BCH;
+  const handX=(VW-(4*BCW+3*B_GAP))/2;            // рука — по центру экрана
+  const ai={x:sx,y:sTop+pad};
+  const tableH=TABLE_ROWS*BCH+(TABLE_ROWS-1)*B_GAP;
+  const cellsGap=(handY1-(ai.y+BCH)-tableH)/2;   // по промежутку над и под столом
+  const tableY=ai.y+BCH+cellsGap;
+  const cp=Math.min(16,Math.max(0,cellsGap)/8);
   return {
-    VW,VH,sx,sTop,sBot,colX,band,
-    header:{x:sx,y:sTop,w:SAFE_W,h:80},
-    hint:{x:sx+SAFE_W-200,y:sTop+6,w:200,h:68},
-    ai, aiAct:{x:ai.x+BCW+40,y:ai.y},
-    deck:{x:sx+10,y:midC-BCH/2},
+    VW,VH,sx,sTop,sBot,pad,colX,handX,band,cellsGap,
+    header:{x:sx,y:sTop+Math.max(0,(pad-HEADER_H)/2),w:SAFE_W,h:Math.min(HEADER_H,pad)},
+    hint:{x:sx+SAFE_W-200,y:sTop+Math.max(0,(pad-68)/2),w:200,h:Math.min(68,pad)},
+    ai, aiAct:{x:colX,y:ai.y},
+    deck:{x:sx,y:tableY+(tableH-BCH)/2},
     table:{x:colX,y:tableY,h:tableH},
-    felt:{x:(VW-VW*FELT_W)/2,y:midC-VH*FELT_H/2,w:VW*FELT_W,h:VH*FELT_H},
-    cellsAI:{x:sx,y:midTop+pad,w:SAFE_W,h:gapA-2*pad},
-    cellsP:{x:sx,y:tableY+tableH+pad,w:SAFE_W,h:gapP-2*pad},
+    felt:{x:VW*0.025,y:tableY,w:VW*0.95,h:tableH},
+    cellsAI:{x:sx,y:ai.y+BCH+cp,w:SAFE_W,h:cellsGap-2*cp},
+    cellsP:{x:sx,y:tableY+tableH+cp,w:SAFE_W,h:cellsGap-2*cp},
     handY1,handY2,
   };
 }
-// Стол: 4 колонки; больше 8 карт — 3-й ряд, карты ужимаются в ту же высоту
+// Стол: 4 колонки, до 3 рядов полным размером (по центру места стола);
+// больше 12 карт — ряды ужимаются в ту же высоту
 function tableLayout(L){
   const sorted=[...G.table].sort((a,b)=>a.m-b.m);
   const rows=Math.max(2,Math.ceil(sorted.length/4));
-  const h=rows<=2?BCH:(L.table.h-(rows-1)*B_GAP)/rows, w=h*BCW/BCH;
+  const h=Math.min(BCH,(L.table.h-(rows-1)*B_GAP)/rows), w=h*BCW/BCH;
   const y0=L.table.y+(L.table.h-(rows*h+(rows-1)*B_GAP))/2;
   return sorted.map((card,i)=>({card,w,h,
     x:L.table.x+(i%4)*(w+B_GAP), y:y0+Math.floor(i/4)*(h+B_GAP)}));
@@ -315,7 +326,7 @@ function playerHandLayout(L=boardLayout()){
     .map((card,i)=>({card,i}))
     .sort((a,b)=>a.card.m-b.card.m||(a.i-b.i))
     .map((e,idx)=>({card:e.card,i:e.i,
-      x:L.colX+(idx%4)*(BCW+B_GAP),
+      x:L.handX+(idx%4)*(BCW+B_GAP),
       y:idx<4?L.handY1:L.handY2}));
 }
 function choiceButtons(L){
@@ -326,7 +337,7 @@ const inRect=(p,r)=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h;
 
 function drawBoard(){
   const L=boardLayout();
-  // Сукно стола: 95% ширины, 40% высоты экрана
+  // Сукно стола: 95% ширины, по высоте — место стола на 3 ряда
   ct.fillStyle='rgba(20,60,30,.35)';
   ct.beginPath();rr(L.felt.x,L.felt.y,L.felt.w,L.felt.h,40);ct.fill();
   drawBoardHeader(L);
