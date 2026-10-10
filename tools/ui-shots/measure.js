@@ -11,8 +11,8 @@ const { chromium } = require('/opt/node-tools/node_modules/playwright');
       return {k:+(VIEW.k*VIEW.dpr).toFixed(3), card:[px(BCW),px(BCH)], table0:[px(T[0].w),px(T[0].h)],
         sidePct:+(L.sx/L.VW*100).toFixed(1), topPct:+(L.sTop/L.VH*100).toFixed(1), botPct:+((L.VH-L.sBot)/L.VH*100).toFixed(1),
         safeW:px(SAFE_W), deck:[px(L.deck.w),px(L.deck.h)], gap:px(B_GAP),
-        row6W:px(6*BCW+5*B_GAP), tableH:px(L.table.h), cellsGap:px(L.cellsGap), band:px(L.band.h),
-        handCentered:Math.abs(hd[0].x+(hd[3].x+BCW)-L.VW)<0.01, deckCentered:Math.abs(2*L.deck.x+L.deck.w-L.VW)<0.01 };
+        row6W:px(6*BCW+5*B_GAP), row4W:px(4*BCW+3*B_GAP), tableH:px(L.table.h), cellsGap:px(L.cellsGap), band:px(L.band.h),
+        handCentered:Math.abs(hd[0].x+(hd[3].x+BCW)-L.VW)<0.01, deckMirrorsAI:Math.abs(L.deck.x+L.deck.w-(L.sx+SAFE_W))<0.01&&L.ai.x===L.sx, tableX0:px(tableLayout(L)[0]?Math.min(...tableLayout(L).map(t=>t.x))-L.sx:0) };
     });
     console.log(name, JSON.stringify(r)); await p.close();
   }
