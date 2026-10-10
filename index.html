@@ -523,15 +523,45 @@ function drawBoardTable(L){
     drawCard(x,y,card,true,false,w,h);
   });
 }
-// Место под яку (оформление ячеек — позже): рамка, собранные яку и очки раунда
+// Яку — пока текстом, как в старой версии: строка «👑 🧸 🎀 🐾 = очки» и собранные
+// яку, ниже «прогресс к яку» — нужные карты с ✓/✗ (оформление ячеек — позже)
 function drawYakuPlaceholder(r,cap,who){
-  if(r.h<30) return;
-  ct.save();ct.setLineDash([12,10]);ct.strokeStyle='rgba(240,177,60,.45)';ct.lineWidth=3;
+  if(r.h<60) return;
+  const isAi=who==='ИИ';
+  ct.save();ct.setLineDash([12,10]);ct.strokeStyle='rgba(240,177,60,.35)';ct.lineWidth=3;
   ct.beginPath();rr(r.x,r.y,r.w,r.h,18);ct.stroke();ct.restore();
-  const y=getYaku(cap), pts=yakuPts(y);
-  ct.textBaseline='middle';ct.textAlign='center';
-  ct.font='bold 34px Georgia';ct.fillStyle=pts?'#f0d070':'rgba(240,177,60,.6)';
-  ct.fillText(y.length?`${who}: ${y.map(v=>`${v.n} ${v.p}`).join(' · ')} = ${pts}`:`яку — ${who}`,r.x+r.w/2,r.y+r.h/2);
+  const n=t=>cap.filter(c=>c.t===t).length, y=getYaku(cap), pts=yakuPts(y);
+  const pad=18, top=r.y+pad, lh=Math.min(44,r.h/7);
+  ct.textBaseline='middle';ct.textAlign='left';
+  ct.font=`bold ${Math.round(lh*0.75)}px Georgia`;
+  ct.fillStyle=isAi?'rgba(230,150,150,.9)':'rgba(255,255,255,.9)';
+  ct.fillText(`${isAi?'ИИ':'ВЫ'}:  👑${n('bright')}  🧸${n('animal')}  🎀${n('ribbon')}  🐾${n('plain')}  =  ${pts} оч.`,r.x+pad,top+lh/2);
+  if(y.length){
+    ct.textAlign='right';ct.fillStyle='#f0d070';
+    ct.fillText(y.map(v=>`${v.n} ${v.p}`).join(' · '),r.x+r.w-pad,top+lh/2);
+  }
+  const has=(m,sub,t)=>cap.some(c=>c.m===m&&(!sub||c.sub===sub)&&(!t||c.t===t));
+  const rows=[
+    {label:'Ino-Shika-Cho',items:[['7 Boar',has(7,'boar')],['10 Deer',has(10,'deer')],['6 Butterfly',has(6,'butterfly')]]},
+    {label:'Akatan',items:[['1 Poetry',has(1,'poetry')],['2 Poetry',has(2,'poetry')],['3 Poetry',has(3,'poetry')]]},
+    {label:'Aotan',items:[['6 Blue',has(6,'blue')],['9 Blue',has(9,'blue')],['10 Blue',has(10,'blue')]]},
+    {label:'Brights',items:[['1 Crane',has(1,null,'bright')],['3 Curtain',has(3,null,'bright')],
+      ['8 Moon',has(8,null,'bright')],['11 Rain',has(11,null,'bright')],['12 Phoenix',has(12,null,'bright')]]},
+    {label:'Sake yaku',items:[['3 Curtain',has(3,null,'bright')],['8 Moon',has(8,null,'bright')],['9 Sake',has(9,'sake')]]},
+  ];
+  const y0=top+lh+8, rh=(r.y+r.h-pad-y0)/rows.length, LW=230, fs=Math.round(Math.min(26,rh*0.62));
+  const iw=(r.w-2*pad-LW)/5;
+  rows.forEach((row,ri)=>{
+    const cy=y0+ri*rh+rh/2, done=row.items.every(i=>i[1]);
+    ct.textAlign='left';ct.font=`bold ${fs}px Georgia`;
+    ct.fillStyle=done?'#70e870':'#c9a227';
+    ct.fillText(row.label+':',r.x+pad,cy);
+    row.items.forEach(([name,ok],ii)=>{
+      ct.font=`${ok?'bold ':''}${fs}px Georgia`;
+      ct.fillStyle=ok?'#70e870':'rgba(255,255,255,.3)';
+      ct.fillText((ok?'✓ ':'✗ ')+name,r.x+pad+LW+ii*iw,cy);
+    });
+  });
 }
 // Временная метка: отступы Telegram и размеры экрана — для проверки на телефоне.
 // Красные линии — safeAreaInset (устройство), жёлтые — + contentSafeAreaInset
