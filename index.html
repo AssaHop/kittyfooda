@@ -236,7 +236,8 @@ const YBTN = 762;  // Choice buttons
 // Карты 3:4, один размер для руки, стола и ИИ (на 5% меньше, чем 2×6 через
 // 10 px ровно по зоне). Стол по центру экрана: обычно 2×4, лишние — колонки
 // 5–6, сетка остаётся по центру. Колода — справа, зеркально карте ИИ, того же размера.
-// Карта хода ИИ и карта из колоды выезжают чуть выше стола (слева/справа).
+// Карта хода ИИ и карта из колоды выезжают в центр, на 40% перекрывая верхний
+// ряд стола; взятые карты улетают в блок яку того, кто взял.
 // Рука 2×4 по центру, под ней полоса «Мяу-Мяу». Над и под столом — место яку.
 // k — масштаб реф. px → CSS px; если экран короче нужного, k уменьшается
 // по высоте и поле центрируется. Одна boardLayout() — для отрисовки и кликов.
@@ -254,8 +255,8 @@ const DECK_K=1;                    // колода — того же разме�
 const BAND_H=100;                  // полоса сообщений / «Мяу-Мяу»
 const HEADER_H=80;                 // счёт/раунд/💡
 const MIN_CELLS=200;               // минимальная высота зоны ячеек яку
-const STAGE_UP=0.3;                // карта хода/из колоды — выше стола на 0,3 высоты карты
-const DEBUG_INSETS=true;           // временно: метка с отступами Telegram (проверка на телефоне)
+const STAGE_OVER=0.4;              // выехавшая карта перекрывает верхний ряд стола на 40% высоты
+const DEBUG_INSETS=false;          // метка с отступами Telegram (проверено на iPhone 15: safe t54 b20, content t46)
 
 let VIEW={cssW:450,cssH:800,dpr:1,k:1,VW:REF_W,VH:2556,ls:1,lx:0,ly:0};
 function readTgInsets(){
@@ -298,7 +299,7 @@ function boardLayout(V=VIEW){
   const handX=(VW-(4*BCW+3*HAND_GAP))/2;         // рука — по центру экрана
   const ai={x:sx,y:sTop+HEADER_H+B_GAP};
   const dw=BCW*DECK_K, dh=BCH*DECK_K;
-  const tableH=2*BCH+B_GAP, stage=BCH*STAGE_UP;   // место над столом под выезжающую карту
+  const tableH=2*BCH+B_GAP, stage=BCH*(1-STAGE_OVER); // место над столом под выехавшую карту
   const cellsGap=(handY1-(ai.y+BCH)-tableH-stage-B_GAP)/2;
   const tableY=ai.y+BCH+cellsGap+stage;
   const cp=Math.min(12,Math.max(0,cellsGap)/10);
@@ -308,8 +309,7 @@ function boardLayout(V=VIEW){
     hint:{x:sx+SAFE_W-200,y:sTop+6,w:200,h:HEADER_H-12},
     ai,
     deck:{x:sx+SAFE_W-dw,y:ai.y+(BCH-dh)/2,w:dw,h:dh},   // зеркально карте ИИ
-    stageAI:{x:sx,y:tableY-stage},                       // куда выезжает карта ИИ
-    stageDeck:{x:sx+SAFE_W-BCW,y:tableY-stage},          // куда выезжает карта из колоды
+    stage:{x:(VW-BCW)/2,y:tableY-stage},                 // центр: куда выезжает карта ИИ и карта из колоды
     table:{y:tableY,h:tableH},
     felt:{x:VW*0.025,y:tableY-B_GAP,w:VW*0.95,h:tableH+2*B_GAP},
     cellsAI:{x:sx,y:ai.y+BCH+cp,w:SAFE_W,h:cellsGap-2*cp},
@@ -370,9 +370,36 @@ function slide(key,from,to,ms=320){
   if(p<1&&!animFrame) animFrame=requestAnimationFrame(()=>{animFrame=0;draw();});
   return {x:from.x+(to.x-from.x)*e, y:from.y+(to.y-from.y)*e, s:from.s+(to.s-from.s)*e};
 }
+// Взятые карты улетают в блок яку: запоминаем, где карта была видна в прошлом
+// кадре (стол, выехавшая карта, рука), и для новой взятой карты запускаем полёт
+// оттуда в центр блока яку владельца с уменьшением и затуханием.
+const LASTPOS={}, FLIGHTS=[]; let prevCap=null;
+function noteCaptures(L){
+  const cur={p:new Set(G.pCap.map(c=>c.id)),a:new Set(G.aCap.map(c=>c.id))};
+  if(prevCap){
+    [['p',G.pCap,L.cellsP],['a',G.aCap,L.cellsAI]].forEach(([k,cap,r])=>{
+      cap.forEach(c=>{ if(!prevCap[k].has(c.id)&&LASTPOS[c.id]){
+        FLIGHTS.push({card:c,from:LASTPOS[c.id],to:{x:r.x+r.w/2,y:r.y+r.h/2},t0:performance.now()});
+      }});
+    });
+  }
+  prevCap=cur;
+}
+function drawFlights(){
+  const now=performance.now(), ms=420;
+  for(let i=FLIGHTS.length-1;i>=0;i--){
+    const f=FLIGHTS[i], p=Math.min(1,(now-f.t0)/ms), e=p*p*(3-2*p);
+    if(p>=1){FLIGHTS.splice(i,1);continue;}
+    const s=1-0.6*e, w=BCW*s, h=BCH*s;
+    const cx=f.from.x+BCW/2+(f.to.x-f.from.x-BCW/2)*e, cy=f.from.y+BCH/2+(f.to.y-f.from.y-BCH/2)*e;
+    ct.save();ct.globalAlpha=1-0.7*e;drawCard(cx-w/2,cy-h/2,f.card,true,false,w,h);ct.restore();
+  }
+  if(FLIGHTS.length&&!animFrame) animFrame=requestAnimationFrame(()=>{animFrame=0;draw();});
+}
 function drawBoard(){
   const L=boardLayout();
   for(const k in ANIM) ANIM[k].seen=false;
+  noteCaptures(L);
   // Сукно стола: 95% ширины, по высоте — 2 ряда стола
   ct.fillStyle='rgba(20,60,30,.35)';
   ct.beginPath();rr(L.felt.x,L.felt.y,L.felt.w,L.felt.h,40);ct.fill();
@@ -384,6 +411,7 @@ function drawBoard(){
   drawBoardDeck(L);
   drawBoardHand(L);
   drawBoardBand(L);
+  drawFlights();
   for(const k in ANIM) if(!ANIM[k].seen) delete ANIM[k];
   if(DEBUG_INSETS) drawDebugInsets(L);
 }
@@ -421,10 +449,11 @@ function drawBoardAI(L){
     ct.fillStyle='#c06060';ct.font='34px Georgia';ct.textAlign='center';ct.textBaseline='middle';
     ct.fillText('ИИ ходит…',L.VW/2,a.y+BCH/2);
   }
-  // Карта, которую ИИ играет с руки, — выезжает из его карты чуть выше стола
+  // Карта, которую ИИ играет с руки, — выезжает из его карты в центр над столом
   if(G.aiHL>=0&&G.aiCard){
-    const p=slide('ai'+G.aiCard.id,{x:a.x,y:a.y,s:1},{x:L.stageAI.x,y:L.stageAI.y,s:1});
+    const p=slide('ai'+G.aiCard.id,{x:a.x,y:a.y,s:1},{x:L.stage.x,y:L.stage.y,s:1});
     drawFloating(p.x,p.y,BCW*p.s,BCH*p.s,G.aiCard,'rgba(255,150,60,.9)');
+    LASTPOS[G.aiCard.id]={x:p.x,y:p.y};
   }
 }
 function drawBoardDeck(L){
@@ -437,10 +466,11 @@ function drawBoardDeck(L){
   }else{
     ct.fillStyle='rgba(255,255,255,.1)';ct.fillRect(d.x,d.y,d.w,d.h);
   }
-  // Карта из колоды (и ИИ, и игрока) — выезжает из колоды чуть выше стола
+  // Карта из колоды (и ИИ, и игрока) — выезжает из колоды в центр над столом
   if(G.aiPreview){
-    const p=slide('dk'+G.aiPreview.id,{x:d.x,y:d.y,s:DECK_K},{x:L.stageDeck.x,y:L.stageDeck.y,s:1});
+    const p=slide('dk'+G.aiPreview.id,{x:d.x,y:d.y,s:DECK_K},{x:L.stage.x,y:L.stage.y,s:1});
     drawFloating(p.x,p.y,BCW*p.s,BCH*p.s,G.aiPreview,'rgba(255,200,80,.9)');
+    LASTPOS[G.aiPreview.id]={x:p.x,y:p.y};
   }
 }
 function drawFloating(x,y,w,h,card,col){
@@ -450,6 +480,7 @@ function drawFloating(x,y,w,h,card,col){
 }
 function drawBoardTable(L){
   tableLayout(L).forEach(({card,x,y,w,h})=>{
+    LASTPOS[card.id]={x,y};
     const isTarget=G.aiTargets&&G.aiTargets.some(t=>t.id===card.id);
     if(isTarget){
       ct.save();ct.shadowColor='rgba(255,160,40,.9)';ct.shadowBlur=40;
@@ -492,6 +523,7 @@ function drawBoardHand(L){
   playerHandLayout(L).forEach(({card,i,x,y})=>{
     const sel=G.sel===i&&(G.phase==='select'||G.phase==='choose');
     const yy=y+(sel?-30:0);
+    LASTPOS[card.id]={x,y:yy};
     drawCard(x,yy,card,true,sel,BCW,BCH);
     if(hintActive===i){
       ct.save();ct.strokeStyle='rgba(80,220,255,.95)';ct.lineWidth=8;
