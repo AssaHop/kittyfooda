@@ -339,6 +339,14 @@ function tableLayout(L){
     return sorted.map((card,i)=>({card,w,h,
       x:x0+(i%TABLE_COLS)*(w+B_GAP), y:L.table.y+Math.floor(i/TABLE_COLS)*(h+B_GAP)}));
   }
+  // 4 карты и меньше — собираются в один ряд по центру стола (места уплотняются
+  // в верхний ряд, чтобы при росте стола раскладка продолжилась без дыр)
+  if(G.table.length<=4){
+    const sorted=[...G.table].sort((a,b)=>slot[a.id]-slot[b.id]);
+    sorted.forEach((c,i)=>slot[c.id]=TABLE_SLOTS[i]);
+    const n=sorted.length, x0=(L.VW-(n*BCW+(n-1)*B_GAP))/2, y=L.table.y+(L.table.h-BCH)/2;
+    return sorted.map((card,i)=>({card,w:BCW,h:BCH,x:x0+i*(BCW+B_GAP),y}));
+  }
   const cols=Math.max(4,...G.table.map(c=>slot[c.id]%TABLE_COLS+1));
   const x0=(L.VW-(cols*BCW+(cols-1)*B_GAP))/2;
   return G.table.map(card=>{const s=slot[card.id];
@@ -373,9 +381,14 @@ function slide(key,from,to,ms=320){
 // Взятые карты улетают в блок яку: запоминаем, где карта была видна в прошлом
 // кадре (стол, выехавшая карта, рука), и для новой взятой карты запускаем полёт
 // оттуда в центр блока яку владельца с уменьшением и затуханием.
-const LASTPOS={}, FLIGHTS=[]; let prevCap=null;
+const LASTPOS={}, FLIGHTS=[], TPOS={}; let prevCap=null;
 function noteCaptures(L){
   const cur={p:new Set(G.pCap.map(c=>c.id)),a:new Set(G.aCap.map(c=>c.id))};
+  // Новый раунд (взятые обнулились): номера карт те же, старые позиции не нужны
+  if(prevCap&&(cur.p.size<prevCap.p.size||cur.a.size<prevCap.a.size)){
+    for(const k in LASTPOS) delete LASTPOS[k];
+    for(const k in TPOS) delete TPOS[k];
+  }
   if(prevCap){
     [['p',G.pCap,L.cellsP],['a',G.aCap,L.cellsAI]].forEach(([k,cap,r])=>{
       cap.forEach(c=>{ if(!prevCap[k].has(c.id)&&LASTPOS[c.id]){
@@ -478,8 +491,26 @@ function drawFloating(x,y,w,h,card,col){
   drawCard(x,y,card,true,false,w,h);ct.restore();
   ct.strokeStyle=col;ct.lineWidth=6;ct.strokeRect(x-4,y-4,w+8,h+8);
 }
+// Карты стола переезжают на новое место плавно (перестройка ряда, центрирование);
+// карта, только что легшая на стол из руки или из центра, долетает оттуда.
+function tableMove(id,x,y){
+  const now=performance.now(), ms=300;
+  let t=TPOS[id];
+  if(!t){ const f=LASTPOS[id]||{x,y}; t=TPOS[id]={fx:f.x,fy:f.y,tx:x,ty:y,t0:now}; }
+  else if(t.tx!==x||t.ty!==y){ const c=tablePosAt(t,now,ms); Object.assign(t,{fx:c.x,fy:c.y,tx:x,ty:y,t0:now}); }
+  const c=tablePosAt(t,now,ms);
+  if((c.x!==x||c.y!==y)&&!animFrame) animFrame=requestAnimationFrame(()=>{animFrame=0;draw();});
+  return c;
+}
+function tablePosAt(t,now,ms){
+  const p=Math.min(1,(now-t.t0)/ms), e=1-Math.pow(1-p,3);
+  return p>=1?{x:t.tx,y:t.ty}:{x:t.fx+(t.tx-t.fx)*e, y:t.fy+(t.ty-t.fy)*e};
+}
 function drawBoardTable(L){
-  tableLayout(L).forEach(({card,x,y,w,h})=>{
+  const onTable=new Set(G.table.map(c=>c.id));
+  for(const id in TPOS) if(!onTable.has(+id)) delete TPOS[id];
+  tableLayout(L).forEach(t=>{
+    const {card,w,h}=t, {x,y}=tableMove(card.id,t.x,t.y);
     LASTPOS[card.id]={x,y};
     const isTarget=G.aiTargets&&G.aiTargets.some(t=>t.id===card.id);
     if(isTarget){
