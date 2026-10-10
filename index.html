@@ -387,13 +387,14 @@ function drawBoard(){
   for(const k in ANIM) if(!ANIM[k].seen) delete ANIM[k];
   if(DEBUG_INSETS) drawDebugInsets(L);
 }
-// Шапка: счёт матча по центру, раунд слева, 💡 справа
+// Шапка: счёт матча по центру, 💡 справа; слева — отметка «★ Мяу-Мяу», если объявлено
 function drawBoardHeader(L){
   const h=L.header,cy=h.y+h.h/2;
   ct.textBaseline='middle';
-  ct.font='bold 30px Georgia';ct.fillStyle='#c9a227';ct.textAlign='left';
-  const koi=(G.koiKoi||G.aKoiKoi)?' ★':'';
-  ct.fillText(`Раунд ${G.round} · до ${G.targetScore}${koi}`,h.x+6,cy);
+  if(G.koiKoi||G.aKoiKoi){
+    ct.font='bold 30px Georgia';ct.fillStyle='#c9a227';ct.textAlign='left';
+    ct.fillText('★ Мяу-Мяу',h.x+6,cy);
+  }
   ct.font='bold 48px Georgia';ct.textAlign='center';
   const you=`ВЫ ${G.scores[0]}`, sep='  :  ', ai=`${G.scores[1]} ИИ`;
   const wy=ct.measureText(you).width, ws=ct.measureText(sep).width, wa=ct.measureText(ai).width;
