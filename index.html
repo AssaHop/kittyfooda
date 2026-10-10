@@ -317,40 +317,42 @@ function boardLayout(V=VIEW){
     handY1,handY2,
   };
 }
-// Стол: места 2×6. Сначала 2×4 (ряд 1, ряд 2), потом колонки 5–6. Карта
-// держит своё место, новая занимает первое свободное; новые карты одного
-// хода — по месяцу. Сетка по центру экрана по числу занятых колонок
-// (минимум 4): появилась 5-я колонка — сетка съезжает на полкарты влево.
-const TABLE_SLOTS=[0,1,2,3,6,7,8,9,4,10,5,11]; // порядок заполнения сетки 2×6
+// Стол: 2 ряда до 6 карт, каждый ряд центрируется сам по себе, без дыр.
+// Карта держит свой ряд и порядок в нём (G.tslot[id] = {r, o}); новая карта
+// идёт в ряд, где карт меньше (при равенстве — в верхний), в конец ряда.
+// Новые карты одного хода — по месяцу. 4 карты и меньше — один ряд по
+// центру стола. Больше 12 (редко) — 3 ряда по 6 ужатых карт.
 function tableLayout(L){
-  const slot=G.tslot||(G.tslot={});
+  let slot=G.tslot;
+  if(!slot||Object.values(slot).some(v=>typeof v!=='object')) slot=G.tslot={}; // старый формат сохранения
   const ids=new Set(G.table.map(c=>c.id));
   for(const id in slot) if(!ids.has(+id)) delete slot[id];
-  const used=new Set(Object.values(slot));
-  [...G.table].filter(c=>slot[c.id]===undefined).sort((a,b)=>a.m-b.m).forEach(c=>{
-    const free=TABLE_SLOTS.find(s=>!used.has(s));
-    slot[c.id]=free===undefined?12+Object.keys(slot).length:free; used.add(slot[c.id]);
+  const n=G.table.length;
+  if(n<=4) for(const id in slot) slot[id].r=0;   // при росте стола 5-я карта уйдёт вниз
+  let seq=Math.max(0,...Object.values(slot).map(v=>v.o+1));
+  const cnt=[0,0]; Object.values(slot).forEach(v=>{if(v.r<2)cnt[v.r]++;});
+  [...G.table].filter(c=>!slot[c.id]).sort((a,b)=>a.m-b.m).forEach(c=>{
+    let r=cnt[1]<cnt[0]?1:0;
+    if(cnt[r]>=TABLE_COLS) r=1-r;
+    if(cnt[r]>=TABLE_COLS) r=2;
+    if(r<2) cnt[r]++;
+    slot[c.id]={r,o:seq++};
   });
-  // Больше 12 карт (редко) — 3 ряда по 6 ужатых карт, по порядку мест
-  if(G.table.length>12){
-    const sorted=[...G.table].sort((a,b)=>slot[a.id]-slot[b.id]);
-    const rows=Math.ceil(sorted.length/TABLE_COLS);
-    const h=(L.table.h-(rows-1)*B_GAP)/rows, w=h*BCW/BCH, x0=(L.VW-(TABLE_COLS*w+(TABLE_COLS-1)*B_GAP))/2;
-    return sorted.map((card,i)=>({card,w,h,
-      x:x0+(i%TABLE_COLS)*(w+B_GAP), y:L.table.y+Math.floor(i/TABLE_COLS)*(h+B_GAP)}));
+  const ord=(a,b)=>slot[a.id].r-slot[b.id].r||slot[a.id].o-slot[b.id].o;
+  const sorted=[...G.table].sort(ord);
+  const row=(cards,y,w,h)=>{
+    const x0=(L.VW-(cards.length*w+(cards.length-1)*B_GAP))/2;
+    return cards.map((card,i)=>({card,w,h,x:x0+i*(w+B_GAP),y}));
+  };
+  if(n<=4) return row(sorted,L.table.y+(L.table.h-BCH)/2,BCW,BCH);
+  if(sorted.some(c=>slot[c.id].r===2)){
+    const rows=Math.ceil(n/TABLE_COLS), h=(L.table.h-(rows-1)*B_GAP)/rows, w=h*BCW/BCH;
+    const out=[];
+    for(let i=0;i<rows;i++) out.push(...row(sorted.slice(i*TABLE_COLS,(i+1)*TABLE_COLS),L.table.y+i*(h+B_GAP),w,h));
+    return out;
   }
-  // 4 карты и меньше — собираются в один ряд по центру стола (места уплотняются
-  // в верхний ряд, чтобы при росте стола раскладка продолжилась без дыр)
-  if(G.table.length<=4){
-    const sorted=[...G.table].sort((a,b)=>slot[a.id]-slot[b.id]);
-    sorted.forEach((c,i)=>slot[c.id]=TABLE_SLOTS[i]);
-    const n=sorted.length, x0=(L.VW-(n*BCW+(n-1)*B_GAP))/2, y=L.table.y+(L.table.h-BCH)/2;
-    return sorted.map((card,i)=>({card,w:BCW,h:BCH,x:x0+i*(BCW+B_GAP),y}));
-  }
-  const cols=Math.max(4,...G.table.map(c=>slot[c.id]%TABLE_COLS+1));
-  const x0=(L.VW-(cols*BCW+(cols-1)*B_GAP))/2;
-  return G.table.map(card=>{const s=slot[card.id];
-    return {card,w:BCW,h:BCH,x:x0+(s%TABLE_COLS)*(BCW+B_GAP),y:L.table.y+Math.floor(s/TABLE_COLS)*(BCH+B_GAP)};});
+  return [...row(sorted.filter(c=>slot[c.id].r===0),L.table.y,BCW,BCH),
+          ...row(sorted.filter(c=>slot[c.id].r===1),L.table.y+BCH+B_GAP,BCW,BCH)];
 }
 // Рука игрока — 2 ряда по 4, отсортированы по месяцу. Сам G.pHand не
 // переупорядочивается (на индексы завязаны G.sel/hintActive/playerPlay).
