@@ -5,37 +5,30 @@
 <rect x="47.160000000000004" y="102.24000000000001" width="1084.68" height="2351.52" fill="#e9fbe7" fill-opacity=".12" stroke="#3ccf5a" stroke-width="3" stroke-dasharray="14 10"/>
 <rect x="47.2" y="219.8" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
 <text x="140.6" y="360.0" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">ИИ</text>
-<rect x="59.2" y="516.2" width="1060.7" height="108.8" rx="14" fill="none" stroke="#f0b13c" stroke-width="2" stroke-dasharray="8 8"/>
-<text x="589.5" y="580.6" text-anchor="middle" font-size="30" fill="#f0b13c">ячейки яку ИИ · 141</text>
-<rect x="29.5" y="641.0" width="1120.0" height="901.2" rx="30" fill="#2d6b3a" fill-opacity=".35"/>
-<rect x="47.2" y="951.4" width="186.9" height="280.4" rx="10" fill="#bcb3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="140.6" y="1091.6" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">колода</text>
-<rect x="294.1" y="641.0" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="387.6" y="781.2" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 1</text>
-<rect x="511.0" y="641.0" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="604.5" y="781.2" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 2</text>
-<rect x="728.0" y="641.0" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="821.4" y="781.2" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 3</text>
-<rect x="944.9" y="641.0" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="1038.4" y="781.2" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 4</text>
-<rect x="294.1" y="951.4" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="387.6" y="1091.6" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 5</text>
-<rect x="511.0" y="951.4" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="604.5" y="1091.6" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 6</text>
-<rect x="728.0" y="951.4" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="821.4" y="1091.6" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 7</text>
-<rect x="944.9" y="951.4" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="1038.4" y="1091.6" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 8</text>
-<rect x="294.1" y="1261.8" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="387.6" y="1402.0" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 9</text>
-<rect x="511.0" y="1261.8" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="604.5" y="1402.0" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 10</text>
-<rect x="728.0" y="1261.8" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="821.4" y="1402.0" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 11</text>
-<rect x="944.9" y="1261.8" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
-<text x="1038.4" y="1402.0" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 12</text>
-<rect x="59.2" y="1558.2" width="1060.7" height="108.8" rx="14" fill="none" stroke="#f0b13c" stroke-width="2" stroke-dasharray="8 8"/>
-<text x="589.5" y="1622.6" text-anchor="middle" font-size="30" fill="#f0b13c">ячейки яку игрока · 141</text>
+<rect x="59.2" y="516.2" width="1060.7" height="264.0" rx="14" fill="none" stroke="#f0b13c" stroke-width="2" stroke-dasharray="8 8"/>
+<text x="589.5" y="658.2" text-anchor="middle" font-size="30" fill="#f0b13c">ячейки яку ИИ · 296</text>
+<rect x="29.5" y="796.2" width="1120.0" height="590.8" rx="30" fill="#2d6b3a" fill-opacity=".35"/>
+<rect x="70.5" y="986.4" width="140.2" height="210.3" rx="10" fill="#bcb3ff" stroke="#2f6fe0" stroke-width="3"/>
+<text x="140.6" y="1099.6" text-anchor="middle" font-size="26" font-weight="700" fill="#14306b">колода</text>
+<text x="140.6" y="1230.7" text-anchor="middle" font-size="22" fill="#cfd8ff">140×210 (0.75)</text>
+<rect x="294.1" y="796.2" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
+<text x="387.6" y="936.4" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 1</text>
+<rect x="511.0" y="796.2" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
+<text x="604.5" y="936.4" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 2</text>
+<rect x="728.0" y="796.2" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
+<text x="821.4" y="936.4" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 3</text>
+<rect x="944.9" y="796.2" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
+<text x="1038.4" y="936.4" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 4</text>
+<rect x="294.1" y="1106.6" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
+<text x="387.6" y="1246.8" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 5</text>
+<rect x="511.0" y="1106.6" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
+<text x="604.5" y="1246.8" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 6</text>
+<rect x="728.0" y="1106.6" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
+<text x="821.4" y="1246.8" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 7</text>
+<rect x="944.9" y="1106.6" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
+<text x="1038.4" y="1246.8" text-anchor="middle" font-size="28" font-weight="700" fill="#14306b">стол 8</text>
+<rect x="59.2" y="1403.0" width="1060.7" height="264.0" rx="14" fill="none" stroke="#f0b13c" stroke-width="2" stroke-dasharray="8 8"/>
+<text x="589.5" y="1545.0" text-anchor="middle" font-size="30" fill="#f0b13c">ячейки яку игрока · 296</text>
 <rect x="47.2" y="2303.8" width="1084.7" height="100" rx="20" fill="#5a1a1a" stroke="#c04040" stroke-width="3"/>
 <text x="589.5" y="2363.8" text-anchor="middle" font-size="34" font-weight="700" fill="#fff">полоса 100: сообщение / СТОП · МЯУ-МЯУ</text>
 <rect x="170.6" y="1683.0" width="186.9" height="280.4" rx="10" fill="#cfe3ff" stroke="#2f6fe0" stroke-width="3"/>
@@ -75,16 +68,16 @@
 <line x1="254.1" y1="374.0" x2="254.1" y2="500.2" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
 <text x="0.0" y="0.0" text-anchor="middle" font-size="26" font-weight="600" fill="#d6249c"></text>
 <text x="270.1" y="444.1" font-size="26" font-weight="600" fill="#d6249c">280 (w×1.5)</text>
-<line x1="234.1" y1="937.4" x2="294.1" y2="937.4" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
-<text x="264.1" y="975.4" text-anchor="middle" font-size="26" font-weight="600" fill="#d6249c">2x · 60</text>
-<line x1="481.0" y1="937.4" x2="511.0" y2="937.4" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
-<text x="496.0" y="975.4" text-anchor="middle" font-size="26" font-weight="600" fill="#d6249c">x · 30</text>
-<line x1="698.0" y1="937.4" x2="728.0" y2="937.4" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
-<text x="713.0" y="975.4" text-anchor="middle" font-size="26" font-weight="600" fill="#d6249c">x · 30</text>
-<line x1="914.9" y1="937.4" x2="944.9" y2="937.4" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
-<text x="929.9" y="975.4" text-anchor="middle" font-size="26" font-weight="600" fill="#d6249c">x · 30</text>
+<line x1="234.1" y1="1092.6" x2="294.1" y2="1092.6" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="264.1" y="1130.6" text-anchor="middle" font-size="26" font-weight="600" fill="#d6249c">2x · 60</text>
+<line x1="481.0" y1="1092.6" x2="511.0" y2="1092.6" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="496.0" y="1130.6" text-anchor="middle" font-size="26" font-weight="600" fill="#d6249c">x · 30</text>
+<line x1="698.0" y1="1092.6" x2="728.0" y2="1092.6" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="713.0" y="1130.6" text-anchor="middle" font-size="26" font-weight="600" fill="#d6249c">x · 30</text>
+<line x1="914.9" y1="1092.6" x2="944.9" y2="1092.6" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="929.9" y="1130.6" text-anchor="middle" font-size="26" font-weight="600" fill="#d6249c">x · 30</text>
 <line x1="481.0" y1="1963.4" x2="481.0" y2="1993.4" stroke="#d6249c" stroke-width="3" marker-start="url(#a)" marker-end="url(#a)"/>
 <text x="0.0" y="0.0" text-anchor="middle" font-size="26" font-weight="600" fill="#d6249c"></text>
 <text x="495.0" y="1987.4" font-size="24" font-weight="600" fill="#d6249c">x · 30</text>
-<text x="-240" y="-20" font-size="30" font-weight="700" fill="#222">KittyFooda · макет v3.1 (x=30, стол на 3 ряда) · экран 1179×2556, числа = доли экрана</text>
+<text x="-240" y="-20" font-size="30" font-weight="700" fill="#222">KittyFooda · макет v3.2 (x=30, стол 2 ряда, колода 0.75, крупные яку) · экран 1179×2556, числа = доли экрана</text>
 </svg>
