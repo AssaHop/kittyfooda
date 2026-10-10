@@ -10,10 +10,9 @@ const { chromium } = require('/opt/node-tools/node_modules/playwright');
       const T=tableLayout(L);
       return {k:+(VIEW.k*VIEW.dpr).toFixed(3), card:[px(BCW),px(BCH)], table0:[px(T[0].w),px(T[0].h)],
         sidePct:+(L.sx/L.VW*100).toFixed(1), topPct:+(L.sTop/L.VH*100).toFixed(1), botPct:+((L.VH-L.sBot)/L.VH*100).toFixed(1),
-        safeW:px(SAFE_W), padPct:+(L.pad/(L.sBot-L.sTop)*100).toFixed(1),
-        gapDeckTable:px(L.colX-(L.deck.x+BCW)), gapX:px(B_GAP), rowW:px(T[3].x+T[3].w-L.sx),
-        tableH:px(L.table.h), deck:[px(L.deck.w),px(L.deck.h)], cellsGap:px(L.cellsGap), band:px(L.band.h),
-        handCentered:Math.abs(hd[0].x+(hd[3].x+BCW)-L.VW)<0.01, aiAtZoneLeft:L.ai.x===L.sx };
+        safeW:px(SAFE_W), deck:[px(L.deck.w),px(L.deck.h)], gap:px(B_GAP),
+        row6W:px(6*BCW+5*B_GAP), tableH:px(L.table.h), cellsGap:px(L.cellsGap), band:px(L.band.h),
+        handCentered:Math.abs(hd[0].x+(hd[3].x+BCW)-L.VW)<0.01, deckCentered:Math.abs(2*L.deck.x+L.deck.w-L.VW)<0.01 };
     });
     console.log(name, JSON.stringify(r)); await p.close();
   }

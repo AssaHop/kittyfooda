@@ -229,28 +229,29 @@ const YPH  = 546;  // Player hand top (2 ряда — см. playerHandLayout)
 const YMSG = 706;  // Message bar
 const YBTN = 762;  // Choice buttons
 
-// ── Игровой стол: раскладка под экран (макет v3, 2026-10-10) ────
-// Макет — docs/ui/layout-v3.png. Экран-образец iPhone 15, 1179×2556
+// ── Игровой стол: раскладка под экран (макет v5, 2026-10-10) ────
+// Макет — docs/ui/layout-v5.png. Экран-образец iPhone 15, 1179×2556
 // «референсных» px (= физические px этого экрана), размеры — доли экрана.
-// Поля экрана 4% → игровая зона 92%; внутри зоны отступ сверху 5% её высоты.
-// Ряд стола: колода, промежуток 2x, 4 карты через x — ровно ширина зоны,
-// отсюда размер карты (x = 30 → 187×280, пропорция 2:3). Стол — 2 ряда по 4,
-// колода меньше карт стола. Освободившееся место — ячейкам яку (крупно).
-// Рука 2×4 по центру экрана (без веера), под ней полоса «Мяу-Мяу».
+// Поля: по бокам 4%, сверху и снизу 8% → игровая зона 92% × 84%.
+// Карты 3:4, один размер для руки, стола и ИИ: стол 2×6 через 10 px ровно
+// по ширине зоны (обычно 2×4 слева, лишние — в колонки 5–6, лежащие карты
+// не сдвигаются). Колода ×0,8 — над столом по центру. Рука 2×4 по центру
+// экрана, под ней полоса «Мяу-Мяу». Ячейки яку — над и под столом.
 // k — масштаб реф. px → CSS px; если экран короче нужного, k уменьшается
 // по высоте и поле центрируется. Одна boardLayout() — для отрисовки и кликов.
 const REF_W=1179;
-const SAFE_M=0.04;                 // поле экрана с каждой стороны
+const SAFE_M=0.04;                 // поле экрана слева и справа
+const SAFE_V=0.08;                 // поле экрана сверху и снизу
 const SAFE_W=REF_W*(1-2*SAFE_M);   // 1084.7 — ширина игровой зоны
-const ZONE_PAD=0.05;               // отступ сверху внутри зоны, доля её высоты
-const B_GAP=30;                    // промежуток x между картами
-const BCW=(SAFE_W-5*B_GAP)/5;      // 186.9 — колода + 4 карты + 2x + 3x
-const BCH=BCW*1.5;                 // 280.4
-const TABLE_ROWS=2;                // стол — 2 ряда; больше 8 карт — ряды ужимаются
-const DECK_K=0.75;                 // колода меньше карт стола
-const BAND_H=100, BAND_BOTTOM=50;  // полоса сообщений/«Мяу-Мяу» и отступ под ней
-const HEADER_H=80;                 // счёт/раунд/💡 — в верхнем отступе зоны
-const MIN_CELLS=200;               // минимальная высота промежутка под ячейки яку
+const B_GAP=10;                    // промежуток между картами стола
+const TABLE_COLS=6;                // стол 2×6 (обычно занято 2×4)
+const BCW=(SAFE_W-(TABLE_COLS-1)*B_GAP)/TABLE_COLS; // 172.4
+const BCH=BCW*4/3;                 // 229.9 — пропорция 3:4
+const HAND_GAP=30;                 // промежуток в руке
+const DECK_K=0.8;                  // колода — 0,8 от карты
+const BAND_H=100;                  // полоса сообщений / «Мяу-Мяу»
+const HEADER_H=80;                 // счёт/раунд/💡
+const MIN_CELLS=200;               // минимальная высота зоны ячеек яку
 
 let VIEW={cssW:450,cssH:800,dpr:1,k:1,VW:REF_W,VH:2556,ls:1,lx:0,ly:0};
 function readTgInsets(){
@@ -286,39 +287,53 @@ function toLegacy(cx,cy){return {x:(cx-VIEW.lx)/VIEW.ls, y:(cy-VIEW.ly)/VIEW.ls}
 function boardLayout(V=VIEW){
   const {VW,VH,k,insets}=V;
   const sx=(VW-SAFE_W)/2;
-  const sTop=Math.max(VH*SAFE_M, (insets?insets.top:0)/k);
-  const sBot=VH-Math.max(VH*SAFE_M, (insets?insets.bottom:0)/k);
-  const pad=(sBot-sTop)*ZONE_PAD;
-  const colX=sx+BCW+2*B_GAP;                     // первая колонка стола
-  const band={x:sx,y:sBot-BAND_BOTTOM-BAND_H,w:SAFE_W,h:BAND_H};
-  const handY2=band.y-B_GAP-BCH, handY1=handY2-B_GAP-BCH;
-  const handX=(VW-(4*BCW+3*B_GAP))/2;            // рука — по центру экрана
-  const ai={x:sx,y:sTop+pad};
-  const tableH=TABLE_ROWS*BCH+(TABLE_ROWS-1)*B_GAP;
-  const cellsGap=(handY1-(ai.y+BCH)-tableH)/2;   // по промежутку над и под столом
-  const tableY=ai.y+BCH+cellsGap;
-  const cp=Math.min(16,Math.max(0,cellsGap)/8);
+  const sTop=Math.max(VH*SAFE_V, (insets?insets.top:0)/k);
+  const sBot=VH-Math.max(VH*SAFE_V, (insets?insets.bottom:0)/k);
+  const band={x:sx,y:sBot-BAND_H,w:SAFE_W,h:BAND_H};
+  const handY2=band.y-HAND_GAP-BCH, handY1=handY2-HAND_GAP-BCH;
+  const handX=(VW-(4*BCW+3*HAND_GAP))/2;         // рука — по центру экрана
+  const ai={x:sx,y:sTop+HEADER_H+B_GAP};
+  const dw=BCW*DECK_K, dh=BCH*DECK_K;
+  const tableH=2*BCH+B_GAP, deckH=dh+20+B_GAP;    // строка колоды над столом
+  const cellsGap=(handY1-(ai.y+BCH)-tableH-deckH)/2;
+  const tableY=ai.y+BCH+cellsGap+deckH;
+  const cp=Math.min(12,Math.max(0,cellsGap)/10);
   return {
-    VW,VH,sx,sTop,sBot,pad,colX,handX,band,cellsGap,
-    header:{x:sx,y:sTop+Math.max(0,(pad-HEADER_H)/2),w:SAFE_W,h:Math.min(HEADER_H,pad)},
-    hint:{x:sx+SAFE_W-200,y:sTop+Math.max(0,(pad-68)/2),w:200,h:Math.min(68,pad)},
-    ai, aiAct:{x:colX,y:ai.y},
-    deck:{x:sx+BCW*(1-DECK_K)/2,y:tableY+(tableH-BCH*DECK_K)/2,w:BCW*DECK_K,h:BCH*DECK_K},
-    table:{x:colX,y:tableY,h:tableH},
-    felt:{x:VW*0.025,y:tableY,w:VW*0.95,h:tableH},
+    VW,VH,sx,sTop,sBot,handX,band,cellsGap,
+    header:{x:sx,y:sTop,w:SAFE_W,h:HEADER_H},
+    hint:{x:sx+SAFE_W-200,y:sTop+6,w:200,h:HEADER_H-12},
+    ai, aiAct:{x:sx+BCW+2*B_GAP,y:ai.y},
+    deck:{x:(VW-dw)/2,y:tableY-B_GAP-20-dh,w:dw,h:dh},
+    table:{x:sx,y:tableY,h:tableH},
+    felt:{x:VW*0.025,y:tableY-B_GAP,w:VW*0.95,h:tableH+2*B_GAP},
     cellsAI:{x:sx,y:ai.y+BCH+cp,w:SAFE_W,h:cellsGap-2*cp},
-    cellsP:{x:sx,y:tableY+tableH+cp,w:SAFE_W,h:cellsGap-2*cp},
+    cellsP:{x:sx,y:tableY+tableH+B_GAP+cp,w:SAFE_W,h:cellsGap-B_GAP-2*cp},
     handY1,handY2,
   };
 }
-// Стол: 4 колонки, 2 ряда; больше 8 карт — ряды ужимаются в ту же высоту
+// Стол: постоянные места 2×6. Сначала 2×4 слева (ряд 1, затем ряд 2),
+// потом колонки 5–6. Карта держит своё место, пока лежит на столе; новая
+// занимает первое свободное. Новые карты одного хода — по месяцу.
+const TABLE_SLOTS=[0,1,2,3,6,7,8,9,4,10,5,11]; // порядок заполнения сетки 2×6
 function tableLayout(L){
-  const sorted=[...G.table].sort((a,b)=>a.m-b.m);
-  const rows=Math.max(2,Math.ceil(sorted.length/4));
-  const h=Math.min(BCH,(L.table.h-(rows-1)*B_GAP)/rows), w=h*BCW/BCH;
-  const y0=L.table.y+(L.table.h-(rows*h+(rows-1)*B_GAP))/2;
-  return sorted.map((card,i)=>({card,w,h,
-    x:L.table.x+(i%4)*(w+B_GAP), y:y0+Math.floor(i/4)*(h+B_GAP)}));
+  const slot=G.tslot||(G.tslot={});
+  const ids=new Set(G.table.map(c=>c.id));
+  for(const id in slot) if(!ids.has(+id)) delete slot[id];
+  const used=new Set(Object.values(slot));
+  [...G.table].filter(c=>slot[c.id]===undefined).sort((a,b)=>a.m-b.m).forEach(c=>{
+    const free=TABLE_SLOTS.find(s=>!used.has(s));
+    slot[c.id]=free===undefined?12+Object.keys(slot).length:free; used.add(slot[c.id]);
+  });
+  // Больше 12 карт (редко) — 3 ряда по 6 ужатых карт, по порядку мест
+  if(G.table.length>12){
+    const sorted=[...G.table].sort((a,b)=>slot[a.id]-slot[b.id]);
+    const rows=Math.ceil(sorted.length/TABLE_COLS);
+    const h=(L.table.h-(rows-1)*B_GAP)/rows, w=h*BCW/BCH;
+    return sorted.map((card,i)=>({card,w,h,
+      x:L.table.x+(i%TABLE_COLS)*(w+B_GAP), y:L.table.y+Math.floor(i/TABLE_COLS)*(h+B_GAP)}));
+  }
+  return G.table.map(card=>{const s=slot[card.id];
+    return {card,w:BCW,h:BCH,x:L.table.x+(s%TABLE_COLS)*(BCW+B_GAP),y:L.table.y+Math.floor(s/TABLE_COLS)*(BCH+B_GAP)};});
 }
 // Рука игрока — 2 ряда по 4, отсортированы по месяцу. Сам G.pHand не
 // переупорядочивается (на индексы завязаны G.sel/hintActive/playerPlay).
@@ -327,7 +342,7 @@ function playerHandLayout(L=boardLayout()){
     .map((card,i)=>({card,i}))
     .sort((a,b)=>a.card.m-b.card.m||(a.i-b.i))
     .map((e,idx)=>({card:e.card,i:e.i,
-      x:L.handX+(idx%4)*(BCW+B_GAP),
+      x:L.handX+(idx%4)*(BCW+HAND_GAP),
       y:idx<4?L.handY1:L.handY2}));
 }
 function choiceButtons(L){
@@ -338,7 +353,7 @@ const inRect=(p,r)=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h;
 
 function drawBoard(){
   const L=boardLayout();
-  // Сукно стола: 95% ширины, по высоте — 2 ряда стола
+  // Сукно стола: 95% ширины, по высоте — 2 ряда стола (2×6)
   ct.fillStyle='rgba(20,60,30,.35)';
   ct.beginPath();rr(L.felt.x,L.felt.y,L.felt.w,L.felt.h,40);ct.fill();
   drawBoardHeader(L);
@@ -393,18 +408,17 @@ function drawBoardDeck(L){
   if(G.deck.length){
     drawCard(d.x,d.y,null,false,false,d.w,d.h);
     ct.fillStyle='rgba(255,255,255,.75)';ct.font='bold 40px Georgia';
-    ct.textAlign='center';ct.textBaseline='top';
-    ct.fillText(G.deck.length,d.x+d.w/2,d.y+d.h+10);
+    ct.textAlign='right';ct.textBaseline='middle';
+    ct.fillText(G.deck.length,d.x-20,d.y+d.h/2);
   }else{
     ct.fillStyle='rgba(255,255,255,.1)';ct.fillRect(d.x,d.y,d.w,d.h);
   }
-  // Карта, только что взятая из колоды (и ИИ, и игроком), — лицом вверх,
-  // полного размера, поверх колоды
+  // Карта, только что взятая из колоды (и ИИ, и игроком), — лицом вверх справа от колоды
   if(G.aiPreview){
-    const x=L.sx, y=L.table.y+(L.table.h-BCH)/2;
+    const x=d.x+d.w+40, y=d.y;
     ct.save();ct.shadowColor='rgba(255,200,80,.9)';ct.shadowBlur=40;
-    drawCard(x,y,G.aiPreview,true,false,BCW,BCH);ct.restore();
-    ct.strokeStyle='rgba(255,200,80,.9)';ct.lineWidth=6;ct.strokeRect(x-4,y-4,BCW+8,BCH+8);
+    drawCard(x,y,G.aiPreview,true,false,d.w,d.h);ct.restore();
+    ct.strokeStyle='rgba(255,200,80,.9)';ct.lineWidth=6;ct.strokeRect(x-4,y-4,d.w+8,d.h+8);
   }
 }
 function drawBoardTable(L){
@@ -482,7 +496,7 @@ function yakuPanelRects(L){
   const r=[];
   for(let i=0;i<8;i++) r.push({x:top.x+(i%4)*(cw+g),y:top.y+Math.floor(i/4)*(ch+g),w:cw,h:ch});
   const hy=L.handY1, hh=L.handY2+BCH-L.handY1, sh=(hh-g)/2;
-  const lw=L.handX-B_GAP/2-L.sx-g, rx=L.handX+4*BCW+3*B_GAP+B_GAP/2+g;
+  const lw=L.handX-HAND_GAP/2-L.sx-g/2, rx=L.handX+4*BCW+3*HAND_GAP+HAND_GAP/2;
   [[L.sx,lw],[rx,L.sx+SAFE_W-rx]].forEach(([x,w])=>{
     for(let j=0;j<2;j++) r.push({x,y:hy+j*(sh+g),w,h:sh});
   });
