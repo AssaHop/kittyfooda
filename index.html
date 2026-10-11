@@ -233,8 +233,9 @@ const YBTN = 762;  // Choice buttons
 // Макет — docs/ui/layout-v5.png. Экран-образец iPhone 15, 1179×2556
 // «референсных» px (= физические px этого экрана), размеры — доли экрана.
 // Поля: по бокам 4%, сверху и снизу 8% → игровая зона 92% × 84%.
-// Карты 3:4, один размер для руки, стола и ИИ (на 5% меньше, чем 2×6 через
-// 10 px ровно по зоне). Стол по центру экрана: обычно 2×4, лишние — колонки
+// Карты 4:5, один размер для руки, стола, ИИ и колоды — 168×210 реф. px, целые
+// (2×6 через 10 = 1058 из зоны 1085, по 13–14 px по краям). Все размеры
+// масштабируются одним k, поэтому аспект карт на любом экране один и тот же. Стол по центру экрана: обычно 2×4, лишние — колонки
 // 5–6, сетка остаётся по центру. Колода — справа, зеркально карте ИИ, того же размера.
 // Карта хода ИИ и карта из колоды выезжают в центр, на 40% перекрывая верхний
 // ряд стола; взятые карты улетают в блок яку того, кто взял.
@@ -244,12 +245,10 @@ const YBTN = 762;  // Choice buttons
 const REF_W=1179;
 const SAFE_M=0.04;                 // поле экрана слева и справа
 const SAFE_V=0.08;                 // поле экрана сверху и снизу
-const SAFE_W=REF_W*(1-2*SAFE_M);   // 1084.7 — ширина игровой зоны
+const SAFE_W=1085;                 // ширина игровой зоны ≈ 92% (целое, нечётное — центр 47 px)
 const B_GAP=10;                    // промежуток между картами стола
 const TABLE_COLS=6;                // стол 2×6 (обычно занято 2×4)
-// 2×6 через 10 ровно по зоне дало бы 172.4; по слову пользователя карта на 5% меньше
-const BCW=0.95*(SAFE_W-(TABLE_COLS-1)*B_GAP)/TABLE_COLS; // 163.8
-const BCH=BCW*4/3;                 // 218.4 — пропорция 3:4
+const BCW=168, BCH=210;            // карта 4:5 (по слову пользователя)
 const HAND_GAP=B_GAP;              // промежуток в руке — как на столе (10)
 const DECK_K=1;                    // колода — того же размера, что карта ИИ
 const BAND_H=100;                  // полоса сообщений / «Мяу-Мяу»
@@ -290,28 +289,29 @@ function toBoard(cx,cy){return {x:cx/VIEW.k, y:cy/VIEW.k};}
 function toLegacy(cx,cy){return {x:(cx-VIEW.lx)/VIEW.ls, y:(cy-VIEW.ly)/VIEW.ls};}
 
 function boardLayout(V=VIEW){
-  const {VW,VH,k,insets}=V;
-  const sx=(VW-SAFE_W)/2;
-  const sTop=Math.max(VH*SAFE_V, (insets?insets.top:0)/k);
-  const sBot=VH-Math.max(VH*SAFE_V, (insets?insets.bottom:0)/k);
+  // Координаты округляются: на iPhone 15 (k=1) края карт попадают ровно в пиксели
+  const {VW,VH,k,insets}=V, R=Math.round;
+  const sx=R((VW-SAFE_W)/2);
+  const sTop=R(Math.max(VH*SAFE_V, (insets?insets.top:0)/k));
+  const sBot=R(VH-Math.max(VH*SAFE_V, (insets?insets.bottom:0)/k));
   const band={x:sx,y:sBot-BAND_H,w:SAFE_W,h:BAND_H};
   const handY2=band.y-HAND_GAP-BCH, handY1=handY2-HAND_GAP-BCH;
-  const handX=(VW-(4*BCW+3*HAND_GAP))/2;         // рука — по центру экрана
+  const handX=R((VW-(4*BCW+3*HAND_GAP))/2);      // рука — по центру экрана
   const ai={x:sx,y:sTop+HEADER_H+B_GAP};
-  const dw=BCW*DECK_K, dh=BCH*DECK_K;
-  const tableH=2*BCH+B_GAP, stage=BCH*(1-STAGE_OVER); // место над столом под выехавшую карту
-  const cellsGap=(handY1-(ai.y+BCH)-tableH-stage-B_GAP)/2;
+  const dw=R(BCW*DECK_K), dh=R(BCH*DECK_K);
+  const tableH=2*BCH+B_GAP, stage=R(BCH*(1-STAGE_OVER)); // место над столом под выехавшую карту
+  const cellsGap=Math.floor((handY1-(ai.y+BCH)-tableH-stage-B_GAP)/2);
   const tableY=ai.y+BCH+cellsGap+stage;
-  const cp=Math.min(12,Math.max(0,cellsGap)/10);
+  const cp=R(Math.min(12,Math.max(0,cellsGap)/10));
   return {
     VW,VH,sx,sTop,sBot,handX,band,cellsGap,
     header:{x:sx,y:sTop,w:SAFE_W,h:HEADER_H},
     hint:{x:sx+SAFE_W-200,y:sTop+6,w:200,h:HEADER_H-12},
     ai,
-    deck:{x:sx+SAFE_W-dw,y:ai.y+(BCH-dh)/2,w:dw,h:dh},   // зеркально карте ИИ
-    stage:{x:(VW-BCW)/2,y:tableY-stage},                 // центр: куда выезжает карта ИИ и карта из колоды
+    deck:{x:sx+SAFE_W-dw,y:ai.y+R((BCH-dh)/2),w:dw,h:dh},  // зеркально карте ИИ
+    stage:{x:R((VW-BCW)/2),y:tableY-stage},              // центр: куда выезжает карта ИИ и карта из колоды
     table:{y:tableY,h:tableH},
-    felt:{x:VW*0.025,y:tableY-B_GAP,w:VW*0.95,h:tableH+2*B_GAP},
+    felt:{x:R(VW*0.025),y:tableY-B_GAP,w:R(VW*0.95),h:tableH+2*B_GAP},
     cellsAI:{x:sx,y:ai.y+BCH+cp,w:SAFE_W,h:cellsGap-2*cp},
     cellsP:{x:sx,y:tableY+tableH+B_GAP+cp,w:SAFE_W,h:cellsGap-2*cp},
     handY1,handY2,
@@ -341,7 +341,7 @@ function tableLayout(L){
   const ord=(a,b)=>slot[a.id].r-slot[b.id].r||slot[a.id].o-slot[b.id].o;
   const sorted=[...G.table].sort(ord);
   const row=(cards,y,w,h)=>{
-    const x0=(L.VW-(cards.length*w+(cards.length-1)*B_GAP))/2;
+    const x0=Math.round((L.VW-(cards.length*w+(cards.length-1)*B_GAP))/2);
     return cards.map((card,i)=>({card,w,h,x:x0+i*(w+B_GAP),y}));
   };
   if(n<=4) return row(sorted,L.table.y+(L.table.h-BCH)/2,BCW,BCH);
