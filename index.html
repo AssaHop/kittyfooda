@@ -289,14 +289,14 @@ function toBoard(cx,cy){return {x:cx/VIEW.k, y:cy/VIEW.k};}
 function toLegacy(cx,cy){return {x:(cx-VIEW.lx)/VIEW.ls, y:(cy-VIEW.ly)/VIEW.ls};}
 
 function boardLayout(V=VIEW){
-  // Координаты округляются: на iPhone 15 (k=1) края карт попадают ровно в пиксели
+  // Поля и строки округляются; центровка рядов — нет (по краям может быть 13,5)
   const {VW,VH,k,insets}=V, R=Math.round;
   const sx=R((VW-SAFE_W)/2);
   const sTop=R(Math.max(VH*SAFE_V, (insets?insets.top:0)/k));
   const sBot=R(VH-Math.max(VH*SAFE_V, (insets?insets.bottom:0)/k));
   const band={x:sx,y:sBot-BAND_H,w:SAFE_W,h:BAND_H};
   const handY2=band.y-HAND_GAP-BCH, handY1=handY2-HAND_GAP-BCH;
-  const handX=R((VW-(4*BCW+3*HAND_GAP))/2);      // рука — по центру экрана
+  const handX=(VW-(4*BCW+3*HAND_GAP))/2;         // рука — по центру экрана (без округления)
   const ai={x:sx,y:sTop+HEADER_H+B_GAP};
   const dw=R(BCW*DECK_K), dh=R(BCH*DECK_K);
   const tableH=2*BCH+B_GAP, stage=R(BCH*(1-STAGE_OVER)); // место над столом под выехавшую карту
@@ -341,7 +341,7 @@ function tableLayout(L){
   const ord=(a,b)=>slot[a.id].r-slot[b.id].r||slot[a.id].o-slot[b.id].o;
   const sorted=[...G.table].sort(ord);
   const row=(cards,y,w,h)=>{
-    const x0=Math.round((L.VW-(cards.length*w+(cards.length-1)*B_GAP))/2);
+    const x0=(L.VW-(cards.length*w+(cards.length-1)*B_GAP))/2;   // центр без округления (13,5 по краям)
     return cards.map((card,i)=>({card,w,h,x:x0+i*(w+B_GAP),y}));
   };
   if(n<=4) return row(sorted,L.table.y+(L.table.h-BCH)/2,BCW,BCH);
@@ -511,10 +511,13 @@ function tablePosAt(t,now,ms){
 function drawBoardTable(L){
   const onTable=new Set(G.table.map(c=>c.id));
   for(const id in TPOS) if(!onTable.has(+id)) delete TPOS[id];
-  tableLayout(L).forEach(t=>{
+  // Порядок отрисовки: карта, выложенная на стол позже, — поверх лежащих;
+  // подсвеченные (цели взятия) — поверх всех
+  const slot=G.tslot||{}, isT=c=>G.aiTargets&&G.aiTargets.some(t=>t.id===c.id);
+  tableLayout(L).sort((a,b)=>(isT(a.card)-isT(b.card))||((slot[a.card.id]?.o??0)-(slot[b.card.id]?.o??0))).forEach(t=>{
     const {card,w,h}=t, {x,y}=tableMove(card.id,t.x,t.y);
     LASTPOS[card.id]={x,y};
-    const isTarget=G.aiTargets&&G.aiTargets.some(t=>t.id===card.id);
+    const isTarget=isT(card);
     if(isTarget){
       ct.save();ct.shadowColor='rgba(255,160,40,.9)';ct.shadowBlur=40;
       ct.strokeStyle='rgba(255,160,40,.95)';ct.lineWidth=7;
@@ -582,8 +585,11 @@ function drawDebugInsets(L){
   ct.fillStyle='#9f9';t.forEach((s,i)=>ct.fillText(s,4,y0-(t.length-1-i)*13));
   ct.restore();
 }
+// Порядок отрисовки руки: ряд за рядом слева направо (правая карта поверх левой,
+// нижний ряд поверх верхнего); выбранная карта и подсказка — поверх всех
 function drawBoardHand(L){
-  playerHandLayout(L).forEach(({card,i,x,y})=>{
+  const top=i=>(G.sel===i?2:0)+(hintActive===i?1:0);
+  playerHandLayout(L).sort((a,b)=>top(a.i)-top(b.i)).forEach(({card,i,x,y})=>{
     const sel=G.sel===i&&(G.phase==='select'||G.phase==='choose');
     const yy=y+(sel?-30:0);
     LASTPOS[card.id]={x,y:yy};
@@ -2087,12 +2093,15 @@ const cardBackEntry=(()=>{
   e.img.onerror();
   return e;
 })();
-// Картинка в слот карты: если пропорции совпадают (±6%) — на весь слот,
-// иначе вписывается по центру на фоне цвета месяца (встроенные SVG 120×160
-// шире слота 190×310 — не растягиваем их).
+// Картинка в слот карты: если пропорции совпадают (±7%) — на весь слот.
+// Арт «шире рамки» (пропорция ART_W:BCH = 188:210, ±3%) рисуется по центру
+// слота шире на ART_BLEED с каждой стороны и налезает на соседей; рамка тогда
+// не рисуется. Иначе — вписывается по центру на фоне цвета месяца.
+const ART_W=188, ART_K=ART_W/BCW;   // ширина арта с выступами при карте 168
 function drawFitted(img,x,y,w,h,bg){
   const ia=img.naturalWidth/img.naturalHeight, sa=w/h;
-  if(!ia||Math.abs(ia/sa-1)<0.06){ct.drawImage(img,x,y,w,h);return;}
+  if(ia&&Math.abs(ia/(sa*ART_K)-1)<0.03){const aw=w*ART_K;ct.drawImage(img,x-(aw-w)/2,y,aw,h);return 'bleed';}
+  if(!ia||Math.abs(ia/sa-1)<0.07){ct.drawImage(img,x,y,w,h);return;}
   ct.fillStyle=bg;ct.fillRect(x,y,w,h);
   if(ia>sa){const dh=w/ia;ct.drawImage(img,x,y+(h-dh)/2,w,dh);}
   else{const dw=h*ia;ct.drawImage(img,x+(w-dw)/2,y,dw,h);}
@@ -2117,9 +2126,9 @@ function drawCard(x,y,card,face=true,sel=false,w=CW,h=CH){
   const entry=getCardImg(card);
   const m=MON[card.m-1];
   if(entry.loaded){
-    drawFitted(entry.img,x,y,w,h,m.c);
+    const bleed=drawFitted(entry.img,x,y,w,h,m.c)==='bleed';
     ct.shadowBlur=0;
-    ct.strokeStyle='rgba(0,0,0,.5)';ct.lineWidth=lw;ct.strokeRect(x,y,w,h);
+    if(!bleed){ct.strokeStyle='rgba(0,0,0,.5)';ct.lineWidth=lw;ct.strokeRect(x,y,w,h);}
   }else{
     // Пока картинка грузится — временная заглушка цвета месяца
     ct.fillStyle=m.c;ct.fillRect(x,y,w,h);
