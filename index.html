@@ -524,6 +524,9 @@ function drawBoardTable(L){
       ct.strokeRect(x-6,y-6,w+12,h+12);ct.restore();
     }
     drawCard(x,y,card,true,false,w,h);
+    const selCard=G.sel!=null&&G.pHand[G.sel];
+    if(tutorOn()&&G.phase==='select'&&selCard&&selCard.m===card.m)
+      drawTutorGlow(x,y,w,h,'rgba(90,230,120,.9)');
   });
 }
 // Яку — пока текстом, как в старой версии: строка «👑 🧸 🎀 🐾 = очки» и собранные
@@ -565,6 +568,28 @@ function drawYakuPlaceholder(r,cap,who){
       ct.fillText((ok?'✓ ':'✗ ')+name,r.x+pad+LW+ii*iw,cy);
     });
   });
+  if(who==='вы'&&tutorOn()&&G.phase==='choose') drawKoiTutor(r);
+}
+// Туториал: объяснение выбора Стоп / Мяу-Мяу поверх блока яку игрока
+function drawKoiTutor(r){
+  const y=G.currentYaku||getYaku(G.pCap), pts=yakuPts(y);
+  const lines=[
+    [`Яку собрано: ${y.map(v=>`${v.n} ${v.p}`).join(' · ')} = ${pts} оч.`,'#f0d070',34],
+    [`✋ СТОП — раунд ваш, забираете ${scoredPoints(pts)} оч. сейчас`,'#9fe89f',30],
+    ['🐱 МЯУ-МЯУ — играете дальше: очки раунда удвоятся,','#f0a0a0',30],
+    ['но если ИИ первым соберёт яку — удвоенные очки заберёт он','#f0a0a0',30],
+    ['Не уверены — жмите СТОП','rgba(255,255,255,.7)',28],
+  ];
+  ct.save();ct.fillStyle='rgba(10,8,20,.97)';ct.strokeStyle='#f0d070';ct.lineWidth=4;
+  ct.beginPath();rr(r.x,r.y,r.w,r.h,18);ct.fill();ct.stroke();
+  ct.textAlign='center';ct.textBaseline='middle';
+  const lh=r.h/(lines.length+1);
+  lines.forEach(([t,col,fs],i)=>{
+    let f=fs;ct.font=`bold ${f}px Georgia`;
+    while(f>18&&ct.measureText(t).width>r.w-40){f-=2;ct.font=`bold ${f}px Georgia`;}
+    ct.fillStyle=col;ct.fillText(t,r.x+r.w/2,r.y+lh*(i+1));
+  });
+  ct.restore();
 }
 // Временная метка: отступы Telegram и размеры экрана — для проверки на телефоне.
 // Красные линии — safeAreaInset (устройство), жёлтые — + contentSafeAreaInset
@@ -585,6 +610,66 @@ function drawDebugInsets(L){
   ct.fillStyle='#9f9';t.forEach((s,i)=>ct.fillText(s,4,y0-(t.length-1-i)*13));
   ct.restore();
 }
+// ── Туториал (лёгкие уровни) ─────────────────────────────────────
+// На Easy и Normal: в руке светятся карты, у которых есть пара на столе; у
+// выбранной карты — её цели на столе; в полосе сообщений — что карта возьмёт
+// и к каким яку продвинет; при выборе из двух пар — какая ценнее; в решении
+// Стоп/Мяу-Мяу — объяснение поверх блока яку игрока.
+const TUTOR_DIFFS=[1,2];
+const tutorOn=()=>TUTOR_DIFFS.includes(DIFF);
+const RU_SUB={crane:'Журавль',curtain:'Занавес',moon:'Луна',rain:'Дождь',butterfly:'Бабочки',
+  boar:'Кабан',deer:'Олень',sake:'Саке',poetry:'Стихи',blue:'Синяя лента'};
+function cardRu(c){
+  if(c.t==='bright') return `${c.m} ${RU_SUB[c.sub]||'Феникс'}`;
+  if(c.t==='animal') return `${c.m} ${RU_SUB[c.sub]||'животное'}`;
+  if(c.t==='ribbon') return `${c.m} ${c.sub?RU_SUB[c.sub]:'лента'}`;
+  return `${c.m} простая`;
+}
+// Прогресс к яку: название → [есть, нужно]
+function yakuProgress(cap){
+  const has=(m,t)=>cap.some(c=>c.m===m&&c.t===t), cnt=t=>cap.filter(c=>c.t===t).length;
+  const n=list=>list.filter(([m,t])=>has(m,t)).length;
+  const br=cnt('bright');
+  return {
+    'Яркие':[br,br>=3?5:3],
+    'Ино-Сика-Тё':[n([[7,'animal'],[10,'animal'],[6,'animal']]),3],
+    'Ханами':[n([[3,'bright'],[9,'animal']]),2],
+    'Цукими':[n([[8,'bright'],[9,'animal']]),2],
+    'Ака-тан':[n([[1,'ribbon'],[2,'ribbon'],[3,'ribbon']]),3],
+    'Ао-тан':[n([[6,'ribbon'],[9,'ribbon'],[10,'ribbon']]),3],
+    'Тан':[cnt('ribbon'),5],'Тане':[cnt('animal'),5],'Касу':[cnt('plain'),10],
+  };
+}
+// Что даст карта: две строки для полосы сообщений
+function tutorExplain(card){
+  const matches=G.table.filter(c=>c.m===card.m);
+  if(!matches.length)
+    return `${cardRu(card)}: пары на столе нет — карта ляжет на стол\nСбрасывайте карты подешевле, ценные берегите`;
+  const take=matches.length===2?[...matches].sort((a,b)=>typeVal(b)-typeVal(a)).slice(0,1):matches;
+  const gain=[card,...take], after=[...G.pCap,...gain];
+  const before=yakuProgress(G.pCap), now=yakuProgress(after);
+  const was=new Set(getYaku(G.pCap).map(y=>y.n.split('×')[0]));
+  const fresh=getYaku(after).filter(y=>!was.has(y.n.split('×')[0]));
+  const ups=Object.keys(now).filter(k=>now[k][0]>before[k][0]).map(k=>`${k} ${now[k][0]}/${now[k][1]}`);
+  const line1=matches.length===2
+    ?`${cardRu(card)} берёт одну из двух: ${matches.map(cardRu).join(' или ')}`
+    :`${cardRu(card)} берёт ${take.map(cardRu).join(' + ')}`;
+  const line2=fresh.length?`Собирается яку: ${fresh.map(y=>`${y.n} ${y.p}`).join(', ')}!`
+    :ups.length?`Прогресс: ${ups.slice(0,3).join(' · ')}`:`+${gain.reduce((a,c)=>a+typeVal(c),0)} оч. карт`;
+  return `${line1}\n${line2} — нажмите ещё раз, чтобы сыграть`;
+}
+const hasPair=card=>G.table.some(c=>c.m===card.m);
+// Сообщение в начале хода игрока
+function turnMsg(){
+  if(!tutorOn()) return 'Ваш ход — выберите карту из руки';
+  return G.pHand.some(hasPair)
+    ?'Светятся карты, у которых есть пара на столе\nНажмите карту — покажу, что она даст'
+    :'Пар на столе нет — придётся сбросить карту\nСбрасывайте подешевле (простые 🐾), ценные берегите';
+}
+function drawTutorGlow(x,y,w,h,col){
+  ct.save();ct.strokeStyle=col;ct.lineWidth=7;ct.shadowColor=col;ct.shadowBlur=30;
+  ct.strokeRect(x-5,y-5,w+10,h+10);ct.restore();
+}
 // Порядок отрисовки руки: ряд за рядом слева направо (правая карта поверх левой,
 // нижний ряд поверх верхнего); выбранная карта и подсказка — поверх всех
 function drawBoardHand(L){
@@ -594,6 +679,8 @@ function drawBoardHand(L){
     const yy=y+(sel?-30:0);
     LASTPOS[card.id]={x,y:yy};
     drawCard(x,yy,card,true,sel,BCW,BCH);
+    if(tutorOn()&&G.phase==='select'&&G.turn==='player'&&hasPair(card))
+      drawTutorGlow(x,yy,BCW,BCH,'rgba(90,230,120,.9)');
     if(hintActive===i){
       ct.save();ct.strokeStyle='rgba(80,220,255,.95)';ct.lineWidth=8;
       ct.shadowColor='rgba(80,220,255,.9)';ct.shadowBlur=30;
@@ -611,9 +698,12 @@ function drawBoardBand(L){
   }
   ct.fillStyle='rgba(0,0,0,.55)';ct.beginPath();rr(b.x,b.y+6,b.w,b.h-12,20);ct.fill();
   ct.fillStyle='#f0d878';ct.textAlign='center';ct.textBaseline='middle';
-  let fs=42;ct.font=`bold ${fs}px Georgia`;
-  while(fs>24&&ct.measureText(G.msg||'').width>b.w-40){fs-=2;ct.font=`bold ${fs}px Georgia`;}
-  ct.fillText(G.msg||'',b.x+b.w/2,b.y+b.h/2);
+  const lines=String(G.msg||'').split('\n');
+  let fs=lines.length>1?36:42;ct.font=`bold ${fs}px Georgia`;
+  const wide=()=>Math.max(...lines.map(l=>ct.measureText(l).width));
+  while(fs>20&&wide()>b.w-40){fs-=2;ct.font=`bold ${fs}px Georgia`;}
+  const lh=fs*1.15, y0=b.y+b.h/2-(lines.length-1)*lh/2;
+  lines.forEach((l,i)=>{ ct.fillStyle=i?'#d8c890':'#f0d878'; ct.fillText(l,b.x+b.w/2,y0+i*lh); });
 }
 function boardBtn(r,label,bg,bc){
   ct.fillStyle=bg;ct.strokeStyle=bc;ct.lineWidth=6;
@@ -642,7 +732,7 @@ function boardClick(p){
       const yy=y+(G.sel===i?-30:0);
       if(inRect(p,{x,y:yy-10,w:BCW,h:BCH+20})){
         if(G.sel===i){ playerPlay(i); }
-        else{ G.sel=i; G.msg=`Выбрана карта: месяц ${card.m}. Нажмите ещё раз — сыграть`; draw(); }
+        else{ G.sel=i; G.msg=tutorOn()?tutorExplain(card):`Выбрана карта: месяц ${card.m}. Нажмите ещё раз — сыграть`; draw(); }
         return;
       }
     }
@@ -874,7 +964,7 @@ function newRound(){
     koiKoi:false,aKoiKoi:false,aKoiCount:0,currentYaku:[],
     aiHL:-1,aiTargets:[],aiPreview:null,pendingCapture:null,
     msg:dealer==='player'?'Ваш ход — выберите карту из руки':'Дилер ИИ ходит первым...'};
-  if(dealer==='player') G.phase='select';
+  if(dealer==='player'){ G.phase='select'; G.msg=turnMsg(); }
   logEvent('round_start',{round:G.round,diff:DIFF,dealer,
     playerHand:handDesc(G.pHand),aiHand:handDesc(G.aHand),table:handDesc(G.table)});
   draw();persistState();
@@ -905,6 +995,10 @@ function beginPlayerCaptureChoice(card,kind,handIndex,options){
   G.aiTargets=G.table.filter(c=>ids.includes(c.id));
   G.phase='captureSelect';
   G.msg='Две карты этого месяца на столе — выберите одну для захвата';
+  if(tutorOn()){
+    const opts=G.aiTargets, best=[...opts].sort((a,b)=>typeVal(b)-typeVal(a))[0];
+    G.msg=`Нажмите карту на столе, которую заберёте\n${typeVal(opts[0])===typeVal(opts[1])?'Обе одинаковой ценности':'Ценнее: '+cardRu(best)}`;
+  }
   draw();
 }
 function playerResolveCapture(targetId){
@@ -1892,7 +1986,7 @@ function finishAiTurn(){
 }
 function passToPlayer(){
   if(!G.pHand.length&&!G.aHand.length){endRound();return;}
-  G.turn='player';G.phase='select';G.sel=null;G.msg='Ваш ход — выберите карту из руки';draw();
+  G.turn='player';G.phase='select';G.sel=null;G.msg=turnMsg();draw();
 }
 
 // ── Завершение раунда ────────────────────────────────────────────
