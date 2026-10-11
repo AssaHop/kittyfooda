@@ -542,14 +542,14 @@ function drawYakuPlaceholder(r,cap,who){
   }
   const has=(m,sub,t)=>cap.some(c=>c.m===m&&(!sub||c.sub===sub)&&(!t||c.t===t));
   const rows=[
-    {label:'Ino-Shika-Cho',items:[['7 Boar',has(7,'boar')],['10 Deer',has(10,'deer')],['6 Butterfly',has(6,'butterfly')]]},
-    {label:'Akatan',items:[['1 Poetry',has(1,'poetry')],['2 Poetry',has(2,'poetry')],['3 Poetry',has(3,'poetry')]]},
-    {label:'Aotan',items:[['6 Blue',has(6,'blue')],['9 Blue',has(9,'blue')],['10 Blue',has(10,'blue')]]},
-    {label:'Brights',items:[['1 Crane',has(1,null,'bright')],['3 Curtain',has(3,null,'bright')],
-      ['8 Moon',has(8,null,'bright')],['11 Rain',has(11,null,'bright')],['12 Phoenix',has(12,null,'bright')]]},
-    {label:'Sake yaku',items:[['3 Curtain',has(3,null,'bright')],['8 Moon',has(8,null,'bright')],['9 Sake',has(9,'sake')]]},
+    {label:'Ино-Сика-Тё',items:[['7 Кабан',has(7,'boar')],['10 Олень',has(10,'deer')],['6 Бабочки',has(6,'butterfly')]]},
+    {label:'Ака-тан',items:[['1 Стихи',has(1,'poetry')],['2 Стихи',has(2,'poetry')],['3 Стихи',has(3,'poetry')]]},
+    {label:'Ао-тан',items:[['6 Синяя',has(6,'blue')],['9 Синяя',has(9,'blue')],['10 Синяя',has(10,'blue')]]},
+    {label:'Яркие',items:[['1 Журавль',has(1,null,'bright')],['3 Занавес',has(3,null,'bright')],
+      ['8 Луна',has(8,null,'bright')],['11 Дождь',has(11,null,'bright')],['12 Феникс',has(12,null,'bright')]]},
+    {label:'Ханами/Цукими',items:[['3 Занавес',has(3,null,'bright')],['8 Луна',has(8,null,'bright')],['9 Саке',has(9,'sake')]]},
   ];
-  const y0=top+lh+8, rh=(r.y+r.h-pad-y0)/rows.length, LW=230, fs=Math.round(Math.min(26,rh*0.62));
+  const y0=top+lh+8, rh=(r.y+r.h-pad-y0)/rows.length, LW=230, fs=Math.round(Math.min(24,rh*0.62));
   const iw=(r.w-2*pad-LW)/5;
   rows.forEach((row,ri)=>{
     const cy=y0+ri*rh+rh/2, done=row.items.every(i=>i[1]);
