@@ -19,6 +19,7 @@
 - `tools/ai-sim/` — headless-харнесс прогонов ИИ (`sim.js`, `pimc.js`, `yakucheck.js`, `logcheck.js`, `README.md`).
   На Vercel не деплоится (`.vercelignore`).
 - `docs/archive/` — история калибровки портфельного ИИ и рекап первой сессии.
+- `docs/monetization.md` — исследование механик монетизации (мобильные и Telegram) и задание «Рыбки v1».
 - `docs/progression.md` — предложения по прогрессии, валюте, заданиям (черновик, ждёт решений пользователя).
 - `docs/ui-layout.md` — раскладка экрана (ТЗ пользователя + реализация), `tools/ui-shots/` — скриншоты/замеры/клики
   через Playwright без телефона.
